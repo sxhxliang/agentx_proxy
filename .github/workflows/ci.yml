@@ -141,18 +141,24 @@ jobs:
       - name: Build for ${{ matrix.target }}
         run: |
           if [ "${{ matrix.client_only }}" = "true" ]; then
+            echo "Building client only (agentc) for ${{ matrix.target }}..."
             if [ "${{ matrix.use_cross }}" = "true" ]; then
               cross build --release --target ${{ matrix.target }} -p agentc
             else
               cargo build --release --target ${{ matrix.target }} -p agentc
             fi
           else
+            echo "Building all workspace members for ${{ matrix.target }}..."
             if [ "${{ matrix.use_cross }}" = "true" ]; then
               cross build --release --target ${{ matrix.target }}
             else
               cargo build --release --target ${{ matrix.target }}
             fi
           fi
+
+          # Verify build output
+          echo "Build completed. Checking output files..."
+          ls -lh target/${{ matrix.target }}/release/ | grep -E "(agents|agentc)" || true
         shell: bash
 
       - name: Prepare artifacts (Unix)
@@ -167,9 +173,21 @@ jobs:
       - name: Prepare artifacts (Windows)
         if: runner.os == 'Windows'
         run: |
-          mkdir artifacts
-          copy target\${{ matrix.target }}\release\agents.exe artifacts\ 2>nul || exit 0
-          copy target\${{ matrix.target }}\release\agentc.exe artifacts\
+          echo "Checking build output..."
+          dir target\${{ matrix.target }}\release\*.exe
+
+          if not exist "artifacts" mkdir artifacts
+
+          if exist "target\${{ matrix.target }}\release\agentc.exe" (
+            echo "Copying agentc.exe..."
+            copy target\${{ matrix.target }}\release\agentc.exe artifacts\
+          ) else (
+            echo "ERROR: agentc.exe not found!"
+            exit /b 1
+          )
+
+          echo "Contents of artifacts directory:"
+          dir artifacts
         shell: cmd
 
       - name: Upload artifacts
@@ -178,3 +196,95 @@ jobs:
           name: agentx-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
+
+  upload-to-r2:
+    name: Upload to Cloudflare R2
+    needs: build
+    runs-on: ubuntu-latest
+    # Only upload on push to main branches, not on PRs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+
+      - name: Configure AWS CLI for R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          aws configure set aws_access_key_id $R2_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $R2_SECRET_ACCESS_KEY
+          aws configure set region auto
+
+      - name: Create archive and upload to R2
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Get short commit hash
+          SHORT_SHA=$(echo $COMMIT_SHA | cut -c1-7)
+
+          # Create timestamped directory
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          VERSION="${TIMESTAMP}-${SHORT_SHA}"
+
+          # Compress each platform's artifacts
+          cd artifacts
+          for dir in */; do
+            platform=$(basename "$dir")
+            echo "Processing $platform..."
+
+            cd "$dir"
+
+            # Create tar.gz for Unix platforms, zip for Windows
+            if [[ $platform == *"windows"* ]]; then
+              zip -r "../${platform}-${VERSION}.zip" .
+              UPLOAD_FILE="../${platform}-${VERSION}.zip"
+            else
+              tar czf "../${platform}-${VERSION}.tar.gz" .
+              UPLOAD_FILE="../${platform}-${VERSION}.tar.gz"
+            fi
+
+            cd ..
+
+            # Upload to R2
+            echo "Uploading $UPLOAD_FILE to R2..."
+            aws s3 cp "$(basename $UPLOAD_FILE)" \
+              "s3://${R2_BUCKET}/builds/${VERSION}/$(basename $UPLOAD_FILE)" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+            # Also upload as 'latest' for each platform
+            aws s3 cp "$(basename $UPLOAD_FILE)" \
+              "s3://${R2_BUCKET}/builds/latest/$(basename $UPLOAD_FILE | sed "s/-${VERSION}//")" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          done
+
+          # Create and upload manifest file
+          cat > manifest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "commit": "${COMMIT_SHA}",
+            "timestamp": "${TIMESTAMP}",
+            "branch": "${GITHUB_REF_NAME}",
+            "artifacts": [
+              $(ls *.tar.gz *.zip 2>/dev/null | sed 's/.*/"&"/' | paste -sd,)
+            ]
+          }
+          EOF
+
+          aws s3 cp manifest.json \
+            "s3://${R2_BUCKET}/builds/${VERSION}/manifest.json" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          echo "✅ All artifacts uploaded successfully!"
+          echo "Version: ${VERSION}"
