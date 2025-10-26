@@ -100,10 +100,11 @@ jobs:
             target: aarch64-apple-darwin
             use_cross: false
 
-          # Windows builds
+          # Windows builds (client only)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             use_cross: false
+            client_only: true
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -139,10 +140,18 @@ jobs:
 
       - name: Build for ${{ matrix.target }}
         run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
+          if [ "${{ matrix.client_only }}" = "true" ]; then
+            if [ "${{ matrix.use_cross }}" = "true" ]; then
+              cross build --release --target ${{ matrix.target }} -p agentc
+            else
+              cargo build --release --target ${{ matrix.target }} -p agentc
+            fi
           else
-            cargo build --release --target ${{ matrix.target }}
+            if [ "${{ matrix.use_cross }}" = "true" ]; then
+              cross build --release --target ${{ matrix.target }}
+            else
+              cargo build --release --target ${{ matrix.target }}
+            fi
           fi
         shell: bash
 
