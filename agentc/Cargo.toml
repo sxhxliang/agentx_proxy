@@ -1,0 +1,35 @@
+
+[package]
+name = "agentc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true, features = ["v4", "v5"] }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+which = { workspace = true }
+dirs = "6.0.0"
+regex = "1.12.2"
+chrono = "0.4"
+hostname = "0.3"
+tokio-util = "0.7"
+# hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "service", "http1"] }
+http = "0.2"
+rmcp = { version = "0.8.1", features = [
+    "server",
+    "macros",
+    "transport-streamable-http-server",
+    "schemars",
+] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+
+[dev-dependencies]
+tempfile = "3"
