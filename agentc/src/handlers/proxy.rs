@@ -12,14 +12,14 @@ const ALLOWED_PORT_RANGE: std::ops::RangeInclusive<u16> = 1024..=65535;
 
 // Security: Blocked ports for safety (common services that should not be proxied)
 const BLOCKED_PORTS: &[u16] = &[
-    22,   // SSH
-    23,   // Telnet
-    25,   // SMTP
-    110,  // POP3
-    143,  // IMAP
-    3306, // MySQL
-    5432, // PostgreSQL
-    6379, // Redis
+    22,    // SSH
+    23,    // Telnet
+    25,    // SMTP
+    110,   // POP3
+    143,   // IMAP
+    3306,  // MySQL
+    5432,  // PostgreSQL
+    6379,  // Redis
     27017, // MongoDB
 ];
 
@@ -106,16 +106,23 @@ pub async fn handle_dynamic_proxy(
     };
 
     // Build target path with query string
-    let target_path = ctx.path_params.get("path")
-        .map(|p| if p.is_empty() || p == "/" {
-            "/".to_string()
-        } else {
-            format!("/{}", p.trim_start_matches('/'))
+    let target_path = ctx
+        .path_params
+        .get("path")
+        .map(|p| {
+            if p.is_empty() || p == "/" {
+                "/".to_string()
+            } else {
+                format!("/{}", p.trim_start_matches('/'))
+            }
         })
         .unwrap_or_else(|| "/".to_string());
 
     let target_url = if !ctx.request.query_params.is_empty() {
-        let query_string: Vec<String> = ctx.request.query_params.iter()
+        let query_string: Vec<String> = ctx
+            .request
+            .query_params
+            .iter()
             .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
             .collect();
         format!("{}?{}", target_path, query_string.join("&"))
@@ -125,7 +132,11 @@ pub async fn handle_dynamic_proxy(
 
     info!(
         "('{}') Proxy: {} {} -> 127.0.0.1:{}{}",
-        proxy_conn_id, ctx.request.method.as_str(), ctx.request.path, port, target_url
+        proxy_conn_id,
+        ctx.request.method.as_str(),
+        ctx.request.path,
+        port,
+        target_url
     );
 
     // Connect to target
@@ -147,8 +158,13 @@ pub async fn handle_dynamic_proxy(
     };
 
     // Build and send HTTP request
-    let mut request_data = format!("{} {} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n",
-        ctx.request.method.as_str(), target_url, port).into_bytes();
+    let mut request_data = format!(
+        "{} {} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n",
+        ctx.request.method.as_str(),
+        target_url,
+        port
+    )
+    .into_bytes();
 
     // Add headers (skip host and connection)
     for (key, value) in &ctx.request.headers {
@@ -160,7 +176,9 @@ pub async fn handle_dynamic_proxy(
     request_data.extend_from_slice(b"Connection: close\r\n");
 
     if !ctx.request.body.is_empty() {
-        request_data.extend_from_slice(format!("Content-Length: {}\r\n", ctx.request.body.len()).as_bytes());
+        request_data.extend_from_slice(
+            format!("Content-Length: {}\r\n", ctx.request.body.len()).as_bytes(),
+        );
     }
 
     request_data.extend_from_slice(b"\r\n");
@@ -178,7 +196,10 @@ pub async fn handle_dynamic_proxy(
     }
 
     target_stream.flush().await?;
-    info!("('{}') Request forwarded, streaming response...", proxy_conn_id);
+    info!(
+        "('{}') Request forwarded, streaming response...",
+        proxy_conn_id
+    );
 
     // Stream response back using join_streams
     join_streams(ctx.stream, target_stream).await?;

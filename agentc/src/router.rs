@@ -129,9 +129,7 @@ pub struct RouterBuilder {
 impl RouterBuilder {
     /// Create a new router builder
     pub fn new() -> Self {
-        RouterBuilder {
-            routes: Vec::new(),
-        }
+        RouterBuilder { routes: Vec::new() }
     }
 
     /// Add a route with any HTTP method

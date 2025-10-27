@@ -1,3 +1,4 @@
+use crate::agentx::claude;
 use crate::executor::{
     build_command, parse_bool_str, ClaudeOptions, CodexOptions, ExecutorKind, ExecutorOptions,
     GeminiOptions,
@@ -5,7 +6,6 @@ use crate::executor::{
 use crate::handlers::HandlerState;
 use crate::router::HandlerContext;
 use crate::session::{CommandSession, SessionStatus};
-use crate::agentx::claude;
 use anyhow::{anyhow, Result};
 use common::http::{json_error, HttpResponse};
 use serde_json::{json, Value};
@@ -299,71 +299,61 @@ async fn handle_delete_session(
     }
 }
 
+// Helper to get string parameter from body or query
+fn get_param(body: &Value, request: &common::http::HttpRequest, key: &str) -> Option<String> {
+    body[key]
+        .as_str()
+        .or_else(|| request.query_param(key).map(|s| s.as_str()))
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+}
+
+// Helper to get array parameter from body
+fn get_array_param(body: &Value, key: &str) -> Option<Vec<String>> {
+    body.get(key)?.as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|item| item.as_str().map(String::from))
+            .collect()
+    })
+}
+
+// Helper to validate enum values
+fn validate_enum(value: &str, valid: &[&str], name: &str) -> Result<(), String> {
+    if valid.contains(&value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Invalid {}: {}. Valid options: {}",
+            name,
+            value,
+            valid.join(", ")
+        ))
+    }
+}
+
 /// Parse executor options from request
 fn parse_executor_options(
     body_json: &Value,
     request: &common::http::HttpRequest,
 ) -> (Option<ExecutorOptions>, Option<String>) {
-    let executor_str = body_json["executor"]
-        .as_str()
-        .or_else(|| request.query_param("executor").map(|s| s.as_str()));
-
-    let executor_kind = if let Some(executor) = executor_str {
-        match ExecutorKind::from_str(executor.trim()) {
-            Some(kind) => kind,
-            None => {
-                return (None, Some(format!("Unsupported executor: {}", executor)));
-            }
-        }
-    } else {
-        ExecutorKind::Claude // default
-    };
-
-    // Helper to get string parameter from body or query
-    let get_string_param = |key: &str| -> Option<String> {
-        body_json[key]
-            .as_str()
-            .or_else(|| request.query_param(key).map(|s| s.as_str()))
-            .and_then(|s| {
-                if s.trim().is_empty() {
-                    None
-                } else {
-                    Some(s.trim().to_string())
-                }
-            })
-    };
-
-    // Helper to get array parameter from body
-    let get_array_param = |key: &str| -> Option<Vec<String>> {
-        body_json.get(key).and_then(|v| {
-            v.as_array().map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-        })
-    };
+    let executor_kind = get_param(body_json, request, "executor")
+        .and_then(|s| ExecutorKind::from_str(&s))
+        .unwrap_or(ExecutorKind::Claude);
 
     let options = match executor_kind {
         ExecutorKind::Claude => {
-            // Parse Claude-specific options
-            let resume = get_string_param("resume");
-            let model = get_string_param("model");
-            let permission_mode = get_string_param("permission_mode");
-            let allowed_tools = get_array_param("allowed_tools");
+            let resume = get_param(body_json, request, "resume");
+            let model = get_param(body_json, request, "model");
+            let permission_mode = get_param(body_json, request, "permission_mode");
+            let allowed_tools = get_array_param(body_json, "allowed_tools");
 
-            // Validate permission_mode if provided
-            if let Some(ref perm_mode) = permission_mode {
-                let valid_modes = ["acceptEdits", "bypassPermissions", "default", "plan"];
-                if !valid_modes.contains(&perm_mode.as_str()) {
-                    return (
-                        None,
-                        Some(format!(
-                            "Invalid permission_mode: {}. Valid options: {}",
-                            perm_mode,
-                            valid_modes.join(", ")
-                        )),
-                    );
+            if let Some(ref mode) = permission_mode {
+                if let Err(e) = validate_enum(
+                    mode,
+                    &["acceptEdits", "bypassPermissions", "default", "plan"],
+                    "permission_mode",
+                ) {
+                    return (None, Some(e));
                 }
             }
 
@@ -375,44 +365,33 @@ fn parse_executor_options(
             })
         }
         ExecutorKind::Codex => {
-            // Parse Codex-specific options
-            let model = get_string_param("model");
-
+            let model = get_param(body_json, request, "model");
             let resume_last = match body_json.get("resume_last") {
-                Some(Value::Bool(b)) => Some(*b),
-                Some(Value::String(s)) => parse_bool_str(s),
-                Some(Value::Number(n)) if n.as_i64() == Some(0) => Some(false),
-                Some(Value::Number(n)) if n.as_i64() == Some(1) => Some(true),
+                Some(Value::Bool(b)) => *b,
+                Some(Value::String(s)) => parse_bool_str(s).unwrap_or(false),
+                Some(Value::Number(n)) => n.as_i64() == Some(1),
                 None => request
                     .query_param("resume_last")
-                    .and_then(|s| parse_bool_str(s.trim())),
+                    .and_then(|s| parse_bool_str(s.trim()))
+                    .unwrap_or(false),
                 _ => {
                     return (
                         None,
                         Some("resume_last must be a boolean, string, or number".to_string()),
-                    );
+                    )
                 }
-            }
-            .unwrap_or(false);
+            };
 
             ExecutorOptions::Codex(CodexOptions { model, resume_last })
         }
         ExecutorKind::Gemini => {
-            // Parse Gemini-specific options
-            let approval_mode = get_string_param("approval_mode");
+            let approval_mode = get_param(body_json, request, "approval_mode");
 
-            // Validate approval_mode if provided
             if let Some(ref mode) = approval_mode {
-                let valid_modes = ["default", "auto_edit", "yolo"];
-                if !valid_modes.contains(&mode.as_str()) {
-                    return (
-                        None,
-                        Some(format!(
-                            "Invalid approval_mode: {}. Valid options: {}",
-                            mode,
-                            valid_modes.join(", ")
-                        )),
-                    );
+                if let Err(e) =
+                    validate_enum(mode, &["default", "auto_edit", "yolo"], "approval_mode")
+                {
+                    return (None, Some(e));
                 }
             }
 

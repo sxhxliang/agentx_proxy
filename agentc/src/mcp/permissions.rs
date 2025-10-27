@@ -259,39 +259,24 @@ impl PermissionManager {
         permission_id: &str,
         status_filter: &str,
     ) -> Result<Option<Permission>, McpError> {
-        let url = if status_filter.is_empty() {
-            format!(
-                "{}/api/permissions?streamingId={}",
-                self.cui_server_url, self.cui_streaming_id
-            )
-        } else {
-            format!(
-                "{}/api/permissions?streamingId={}&status={}",
-                self.cui_server_url, self.cui_streaming_id, status_filter
-            )
-        };
+        let mut url = format!(
+            "{}/api/permissions?streamingId={}",
+            self.cui_server_url, self.cui_streaming_id
+        );
+        if !status_filter.is_empty() {
+            url.push_str(&format!("&status={}", status_filter));
+        }
 
-        let response = match self.http_client.get(&url).send().await {
-            Ok(resp) => resp,
-            Err(e) => {
-                tracing::error!("Failed to fetch permission status: {}", e);
-                return Ok(None);
-            }
+        let Ok(response) = self.http_client.get(&url).send().await else {
+            return Ok(None);
         };
-
         if !response.status().is_success() {
-            tracing::error!("Failed to fetch permission status: {}", response.status());
             return Ok(None);
         }
 
-        let permissions_data: PermissionsResponse = match response.json().await {
-            Ok(data) => data,
-            Err(e) => {
-                tracing::error!("Failed to parse permissions response: {}", e);
-                return Ok(None);
-            }
+        let Ok(permissions_data) = response.json::<PermissionsResponse>().await else {
+            return Ok(None);
         };
-
         Ok(permissions_data
             .permissions
             .into_iter()
@@ -312,7 +297,7 @@ impl PermissionManager {
                     tool_name,
                     permission.id
                 );
-                let approval_response = ApprovalResponse {
+                let response = ApprovalResponse {
                     behavior: "allow".to_string(),
                     updated_input: Some(
                         permission
@@ -322,7 +307,7 @@ impl PermissionManager {
                     message: None,
                 };
                 CallToolResult::success(vec![Content::text(
-                    serde_json::to_string(&approval_response).unwrap(),
+                    serde_json::to_string(&response).unwrap(),
                 )])
             }
             PermissionStatus::Denied => {
@@ -331,13 +316,12 @@ impl PermissionManager {
                     tool_name,
                     permission.id
                 );
-                let deny_message = permission.deny_reason.unwrap_or_else(|| {
+                let msg = permission.deny_reason.unwrap_or_else(||
                     "The user doesn't want to proceed with this tool use. The tool use was rejected. STOP what you are doing and wait for the user to tell you how to proceed.".to_string()
-                });
-                Self::create_error_response(deny_message)
+                );
+                Self::create_error_response(msg)
             }
             PermissionStatus::Pending => {
-                // This shouldn't happen in normal flow, but handle gracefully
                 Self::create_error_response("Permission is still pending".to_string())
             }
         }
