@@ -5,48 +5,40 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Represents a project in the ~/.claude/projects directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
-    /// The project ID (derived from the directory name)
     pub id: String,
-    /// The original project path (decoded from the directory name)
     pub path: String,
-    /// List of session IDs (JSONL file names without extension)
     pub sessions: Vec<String>,
-    /// Unix timestamp when the project directory was created
     pub created_at: u64,
-    /// Unix timestamp of the most recent session (if any)
     pub most_recent_session: Option<u64>,
 }
 
-/// Represents a session with its metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
-    /// The session ID (UUID)
     pub id: String,
-    /// The project ID this session belongs to
     pub project_id: String,
-    /// The project path
     pub project_path: String,
-    /// Optional todo data associated with this session
     pub todo_data: Option<serde_json::Value>,
-    /// Unix timestamp when the session file was created
     pub created_at: u64,
-    /// First user message content (if available)
     pub first_message: Option<String>,
-    /// Timestamp of the first user message (if available)
     pub message_timestamp: Option<String>,
-    /// Total number of messages in the session
     pub message_count: usize,
-    /// Session status ('completed', 'ongoing', 'pending', or 'failed')
     pub status: String,
-    /// Total duration in seconds (from first to last message timestamp)
     pub total_duration: Option<f64>,
 }
 
-/// Represents a message or messages in the JSONL file
-/// Messages can be either a single message or an array of messages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkingDirectory {
+    pub path: String,
+    #[serde(rename = "shortname")]
+    pub short_name: String,
+    #[serde(rename = "lastDate")]
+    pub last_date: String,
+    #[serde(rename = "conversationCount")]
+    pub conversation_count: usize,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum MessageField {
@@ -54,44 +46,25 @@ enum MessageField {
     Multiple(Vec<MessageContent>),
 }
 
-impl MessageField {
-    /// Returns a vector of references to all messages
-    fn as_vec(&self) -> Vec<&MessageContent> {
-        match self {
-            MessageField::Single(msg) => vec![msg],
-            MessageField::Multiple(msgs) => msgs.iter().collect(),
-        }
-    }
-}
-
-/// Represents a message entry in the JSONL file
 #[derive(Debug, Deserialize)]
 struct JsonlMessage {
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    entry_type: Option<String>,
     message: Option<MessageField>,
     timestamp: Option<String>,
 }
 
-/// Represents the message content
 #[derive(Debug, Deserialize)]
 struct MessageContent {
     role: Option<String>,
     content: Option<ContentField>,
 }
 
-/// Represents content in various formats
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum ContentField {
-    /// Direct string content
     Text(String),
-    /// Array of content items with type and text fields
     Items(Vec<ContentItem>),
 }
 
-/// Represents a single content item
 #[derive(Debug, Deserialize)]
 struct ContentItem {
     #[serde(rename = "type")]
@@ -99,38 +72,15 @@ struct ContentItem {
     text: Option<String>,
 }
 
-/// Represents a working directory entry for a project
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkingDirectory {
-    /// The full filesystem path
-    pub path: String,
-    /// Short name (last two path components)
-    #[serde(rename = "shortname")]
-    pub short_name: String,
-    /// Last modification date in ISO 8601 format
-    #[serde(rename = "lastDate")]
-    pub last_date: String,
-    /// Number of conversation sessions
-    #[serde(rename = "conversationCount")]
-    pub conversation_count: usize,
-}
-
-/// Session metadata extracted from JSONL file
 #[derive(Debug, Default)]
 struct SessionMetadata {
-    /// First user message content
     first_message: Option<String>,
-    /// Timestamp of the first user message
     message_timestamp: Option<String>,
-    /// Total number of messages in the session
     message_count: usize,
-    /// Total duration in seconds (from first to last message)
     total_duration: Option<f64>,
-    /// Session status ('pending', 'ongoing', 'completed', 'failed')
     status: String,
 }
 
-/// Gets the path to the ~/.claude directory
 fn get_claude_dir() -> Result<PathBuf> {
     dirs::home_dir()
         .context("Could not find home directory")?
@@ -139,447 +89,261 @@ fn get_claude_dir() -> Result<PathBuf> {
         .context("Could not find ~/.claude directory")
 }
 
-/// Checks if text should be filtered out (IDE markers, system messages, etc.)
 fn should_filter_text(text: &str) -> bool {
-    let trimmed = text.trim();
-
-    // Skip empty content
-    if trimmed.is_empty() {
-        return true;
-    }
-
-    // Skip caveat messages
-    if trimmed.contains("Caveat: The messages below were generated by the user while running local commands") {
-        return true;
-    }
-
-    // Skip IDE markers, command tags, and system markers
-    if trimmed.starts_with("<ide_opened_file>")
-        || trimmed.starts_with("<command-name>")
-        || trimmed.starts_with("<ide_selection>")
-        || trimmed.starts_with("<local-command-stdout>")
-        || trimmed.starts_with("<system-reminder>")
-        || trimmed == "Warmup"
-    {
-        return true;
-    }
-
-    false
+    let t = text.trim();
+    t.is_empty()
+        || t.contains("Caveat: The messages below were generated by the user while running local commands")
+        || t.starts_with("<ide_opened_file>")
+        || t.starts_with("<command-name>")
+        || t.starts_with("<ide_selection>")
+        || t.starts_with("<local-command-stdout>")
+        || t.starts_with("<system-reminder>")
+        || t == "Warmup"
 }
 
-/// Extracts text content from a ContentField, filtering out unwanted items
 fn extract_content_text(content: &ContentField) -> Option<String> {
     match content {
-        ContentField::Text(text) => {
-            if should_filter_text(text) {
-                None
-            } else {
-                Some(text.clone())
-            }
-        }
+        ContentField::Text(text) if !should_filter_text(text) => Some(text.clone()),
         ContentField::Items(items) => {
-            let filtered_texts: Vec<&str> = items
+            let texts: Vec<&str> = items
                 .iter()
                 .filter_map(|item| {
-                    // Only process text items
-                    if item.item_type.as_deref() == Some("text") {
-                        if let Some(text) = &item.text {
-                            // Skip filtered text at item level
-                            if !should_filter_text(text) {
-                                return Some(text.as_str());
-                            }
-                        }
-                    }
-                    None
+                    (item.item_type.as_deref() == Some("text"))
+                        .then(|| item.text.as_ref())
+                        .flatten()
+                        .filter(|text| !should_filter_text(text))
+                        .map(|s| s.as_str())
                 })
                 .collect();
-
-            if filtered_texts.is_empty() {
-                None
-            } else {
-                Some(filtered_texts.join("\n"))
-            }
+            (!texts.is_empty()).then(|| texts.join("\n"))
         }
+        _ => None,
     }
 }
 
-/// Gets the actual project path by reading the cwd from the JSONL entries
 pub fn get_project_path_from_sessions(project_dir: &PathBuf) -> Result<String, String> {
-    // Try to read any JSONL file in the directory
-    let entries = fs::read_dir(project_dir)
-        .map_err(|e| format!("Failed to read project directory: {}", e))?;
-
-    for entry in entries {
-        if let Ok(entry) = entry {
+    fs::read_dir(project_dir)
+        .map_err(|e| format!("Failed to read project directory: {}", e))?
+        .flatten()
+        .find_map(|entry| {
             let path = entry.path();
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                // Read the JSONL file and find the first line with a valid cwd
-                if let Ok(file) = fs::File::open(&path) {
-                    let reader = BufReader::new(file);
-                    // Check first few lines instead of just the first line
-                    // Some session files may have null cwd in the first line
-                    for line in reader.lines().take(10) {
-                        if let Ok(line_content) = line {
-                            // Parse the JSON and extract cwd
-                            if let Ok(json) =
-                                serde_json::from_str::<serde_json::Value>(&line_content)
-                            {
-                                if let Some(cwd) = json.get("cwd").and_then(|v| v.as_str()) {
-                                    if !cwd.is_empty() {
-                                        return Ok(cwd.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Err("Could not determine project path from session files".to_string())
+            (path.is_file() && path.extension()?.to_str()? == "jsonl")
+                .then(|| {
+                    BufReader::new(fs::File::open(&path).ok()?)
+                        .lines()
+                        .take(10)
+                        .flatten()
+                        .find_map(|line| {
+                            serde_json::from_str::<serde_json::Value>(&line)
+                                .ok()?
+                                .get("cwd")?
+                                .as_str()
+                                .filter(|s| !s.is_empty())
+                                .map(String::from)
+                        })
+                })
+                .flatten()
+        })
+        .ok_or_else(|| "Could not determine project path from session files".to_string())
 }
 
-/// Decodes a project directory name back to its original path
-/// The directory names in ~/.claude/projects are encoded paths
-/// DEPRECATED: Use get_project_path_from_sessions instead when possible
 fn decode_project_path(encoded: &str) -> String {
-    // This is a fallback - the encoding isn't reversible when paths contain hyphens
-    // For example: -Users-mufeedvh-dev-jsonl-viewer could be /Users/mufeedvh/dev/jsonl-viewer
-    // or /Users/mufeedvh/dev/jsonl/viewer
     encoded.replace('-', "/")
 }
 
-/// Extracts session metadata from a JSONL file
 async fn extract_session_metadata(jsonl_path: &PathBuf) -> SessionMetadata {
-    let _session_id = jsonl_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_string());
-
-    let status_from_runtime: Option<String> = None;
-
-    let file = match fs::File::open(jsonl_path) {
-        Ok(file) => file,
-        Err(_) => {
-            return SessionMetadata {
-                status: status_from_runtime.unwrap_or_else(|| "pending".to_string()),
-                ..Default::default()
-            };
-        }
+    let Ok(file) = fs::File::open(jsonl_path) else {
+        return SessionMetadata {
+            status: "pending".to_string(),
+            ..Default::default()
+        };
     };
 
-    let reader = BufReader::new(file);
     let mut metadata = SessionMetadata::default();
-    let mut first_timestamp_parsed: Option<chrono::DateTime<chrono::Utc>> = None;
-    let mut last_timestamp_parsed: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut first_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut last_ts: Option<chrono::DateTime<chrono::Utc>> = None;
 
-    for line in reader.lines() {
-        if let Ok(line) = line {
-            if let Ok(entry) = serde_json::from_str::<JsonlMessage>(&line) {
-                // Count all messages
-                if entry.message.is_some() {
-                    metadata.message_count += 1;
-                }
+    for line in BufReader::new(file).lines().flatten() {
+        let Ok(entry) = serde_json::from_str::<JsonlMessage>(&line) else { continue };
 
-                // Extract first valid user message
-                if metadata.first_message.is_none() {
-                    if let Some(message_field) = &entry.message {
-                        // Get all messages (handles both single and multiple messages)
-                        for message in message_field.as_vec() {
-                            // Check if this is a user message
-                            if message.role.as_deref() == Some("user") {
-                                if let Some(content) = &message.content {
-                                    // Extract and filter content text
-                                    if let Some(content_text) = extract_content_text(content) {
-                                        // Found a valid user message
-                                        metadata.first_message = Some(content_text);
-                                        metadata.message_timestamp = entry.timestamp.clone();
-                                        break;
-                                    }
-                                }
-                            }
+        if entry.message.is_some() {
+            metadata.message_count += 1;
+        }
+
+        if metadata.first_message.is_none() {
+            if let Some(msg_field) = &entry.message {
+                let messages = match msg_field {
+                    MessageField::Single(m) => vec![m],
+                    MessageField::Multiple(ms) => ms.iter().collect(),
+                };
+
+                for msg in messages {
+                    if msg.role.as_deref() == Some("user") {
+                        if let Some(text) = msg.content.as_ref().and_then(extract_content_text) {
+                            metadata.first_message = Some(text);
+                            metadata.message_timestamp = entry.timestamp.clone();
+                            break;
                         }
                     }
                 }
+            }
+        }
 
-                // Track timestamps for duration calculation
-                if let Some(timestamp_str) = &entry.timestamp {
-                    if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
-                        let utc_time = parsed.with_timezone(&chrono::Utc);
-                        if first_timestamp_parsed.is_none() {
-                            first_timestamp_parsed = Some(utc_time);
-                        }
-                        last_timestamp_parsed = Some(utc_time);
-                    }
-                }
+        if let Some(ts_str) = &entry.timestamp {
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                let utc = parsed.with_timezone(&chrono::Utc);
+                first_ts.get_or_insert(utc);
+                last_ts = Some(utc);
             }
         }
     }
 
-    // Calculate total duration
-    metadata.total_duration =
-        if let (Some(first), Some(last)) = (first_timestamp_parsed, last_timestamp_parsed) {
-            let duration = last.signed_duration_since(first);
-            Some(duration.num_milliseconds() as f64 / 1000.0) // Convert to seconds
-        } else {
-            None
-        };
+    metadata.total_duration = first_ts.zip(last_ts)
+        .map(|(f, l)| l.signed_duration_since(f).num_milliseconds() as f64 / 1000.0);
 
-    // Determine status using runtime session manager if available, fallback to metadata
-    metadata.status = if let Some(status) = status_from_runtime {
-        status
-    } else if metadata.message_count == 0 {
+    metadata.status = if metadata.message_count == 0 {
         "pending".to_string()
-    } else if let Ok(file_metadata) = fs::metadata(jsonl_path) {
-        if let Ok(modified) = file_metadata.modified() {
-            let elapsed = SystemTime::now()
-                .duration_since(modified)
-                .unwrap_or_default();
-            // If modified within last 3 s, consider it ongoing
-            if elapsed.as_secs() < 3 {
-                "ongoing".to_string()
-            } else {
-                "completed".to_string()
-            }
-        } else {
-            "completed".to_string()
-        }
+    } else if let Ok(meta) = fs::metadata(jsonl_path) {
+        meta.modified()
+            .ok()
+            .and_then(|m| SystemTime::now().duration_since(m).ok())
+            .map(|e| if e.as_secs() < 3 { "ongoing" } else { "completed" })
+            .unwrap_or("completed")
+            .to_string()
     } else {
         "completed".to_string()
     };
 
     metadata
 }
-/// Lists all projects in the ~/.claude/projects directory
 pub async fn list_projects() -> Result<Vec<Project>, String> {
-    let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
-    let projects_dir = claude_dir.join("projects");
-    tracing::info!("Listing projects from {:?}", claude_dir);
+    let projects_dir = get_claude_dir().map_err(|e| e.to_string())?.join("projects");
+    tracing::info!("Listing projects from {:?}", projects_dir);
+
     if !projects_dir.exists() {
         tracing::warn!("Projects directory does not exist: {:?}", projects_dir);
         return Ok(Vec::new());
     }
 
-    let mut projects = Vec::new();
+    let mut projects: Vec<Project> = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_dir() { return None; }
 
-    // Read all directories in the projects folder
-    let entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| "Invalid directory name".to_string())?;
-
-            // Get directory creation time
-            let metadata = fs::metadata(&path)
-                .map_err(|e| format!("Failed to read directory metadata: {}", e))?;
-
-            let created_at = metadata
-                .created()
-                .or_else(|_| metadata.modified())
+            let dir_name = path.file_name()?.to_str()?.to_string();
+            let metadata = fs::metadata(&path).ok()?;
+            let created_at = metadata.created().or_else(|_| metadata.modified())
                 .unwrap_or(SystemTime::UNIX_EPOCH)
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
 
-            // Get the actual project path from JSONL files
-            let project_path = match get_project_path_from_sessions(&path) {
-                Ok(path) => path,
-                Err(e) => {
-                    tracing::warn!("Failed to get project path from sessions for {}: {}, falling back to decode", dir_name, e);
-                    decode_project_path(dir_name)
-                }
-            };
+            let project_path = get_project_path_from_sessions(&path)
+                .unwrap_or_else(|_| decode_project_path(&dir_name));
 
-            // List all JSONL files (sessions) in this project directory
-            let mut sessions = Vec::new();
-            let mut most_recent_session: Option<u64> = None;
+            let (sessions, most_recent_session) = fs::read_dir(&path).ok()?
+                .flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    (p.is_file() && p.extension()?.to_str()? == "jsonl").then(|| {
+                        let id = p.file_stem()?.to_str()?.to_string();
+                        let ts = fs::metadata(&p).ok()?
+                            .modified().unwrap_or(SystemTime::UNIX_EPOCH)
+                            .duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                        Some((id, ts))
+                    }).flatten()
+                })
+                .fold((Vec::new(), None), |(mut ids, max_ts), (id, ts)| {
+                    ids.push(id);
+                    (ids, Some(max_ts.map_or(ts, |m: u64| m.max(ts))))
+                });
 
-            if let Ok(session_entries) = fs::read_dir(&path) {
-                for session_entry in session_entries.flatten() {
-                    let session_path = session_entry.path();
-                    if session_path.is_file()
-                        && session_path.extension().and_then(|s| s.to_str()) == Some("jsonl")
-                    {
-                        if let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str())
-                        {
-                            sessions.push(session_id.to_string());
+            Some(Project { id: dir_name, path: project_path, sessions, created_at, most_recent_session })
+        })
+        .collect();
 
-                            // Track the most recent session timestamp
-                            if let Ok(metadata) = fs::metadata(&session_path) {
-                                let modified = metadata
-                                    .modified()
-                                    .unwrap_or(SystemTime::UNIX_EPOCH)
-                                    .duration_since(UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs();
-
-                                most_recent_session = Some(match most_recent_session {
-                                    Some(current) => current.max(modified),
-                                    None => modified,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            projects.push(Project {
-                id: dir_name.to_string(),
-                path: project_path,
-                sessions,
-                created_at,
-                most_recent_session,
-            });
-        }
-    }
-
-    // Sort projects by most recent session activity, then by creation time
-    projects.sort_by(|a, b| {
-        // First compare by most recent session
-        match (a.most_recent_session, b.most_recent_session) {
-            (Some(a_time), Some(b_time)) => b_time.cmp(&a_time),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => b.created_at.cmp(&a.created_at),
-        }
+    projects.sort_by(|a, b| match (a.most_recent_session, b.most_recent_session) {
+        (Some(at), Some(bt)) => bt.cmp(&at),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => b.created_at.cmp(&a.created_at),
     });
 
     tracing::info!("Found {} projects", projects.len());
     Ok(projects)
 }
-
-
-/// Loads the JSONL history for a specific session by session ID only
-/// This function searches across all projects to find the session file
 pub async fn load_session_by_id(session_id: String) -> Result<Vec<serde_json::Value>, String> {
     tracing::info!("Loading session history for session ID: {}", session_id);
 
-    let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
-    let projects_dir = claude_dir.join("projects");
-
+    let projects_dir = get_claude_dir().map_err(|e| e.to_string())?.join("projects");
     if !projects_dir.exists() {
         return Err("Projects directory does not exist".to_string());
     }
 
-    // Remove .jsonl extension if provided
-    let clean_session_id = session_id.trim_end_matches(".jsonl");
+    let clean_id = session_id.trim_end_matches(".jsonl");
 
-    // Search through all project directories for the session file
-    let entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            // Check if the session file exists in this project directory
-            let session_path = path.join(format!("{}.jsonl", clean_session_id));
-
-            if session_path.exists() {
+    fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?
+        .flatten()
+        .find_map(|entry| {
+            let session_path = entry.path().join(format!("{}.jsonl", clean_id));
+            session_path.exists().then(|| {
                 tracing::info!("Found session file at: {:?}", session_path);
-
-                let file = fs::File::open(&session_path)
-                    .map_err(|e| format!("Failed to open session file: {}", e))?;
-
-                let reader = BufReader::new(file);
-                let mut messages = Vec::new();
-
-                for line in reader.lines().flatten() {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                        messages.push(json);
-                    }
-                }
-
-                return Ok(messages);
-            }
-        }
-    }
-
-    Err(format!(
-        "Session file not found for session ID: {}",
-        clean_session_id
-    ))
+                BufReader::new(fs::File::open(&session_path).ok()?)
+                    .lines()
+                    .flatten()
+                    .filter_map(|line| serde_json::from_str(&line).ok())
+                    .collect()
+            }).flatten()
+        })
+        .ok_or_else(|| format!("Session file not found for session ID: {}", clean_id))
 }
 
-/// Removes a session JSONL file (and its todo, if present) by session ID
 pub async fn delete_session_by_id(session_id: String) -> Result<(), String> {
     tracing::info!("Deleting session with ID: {}", session_id);
 
     let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
     let projects_dir = claude_dir.join("projects");
-    let todos_dir = claude_dir.join("todos");
-
     if !projects_dir.exists() {
         return Err("Projects directory does not exist".to_string());
     }
 
-    let clean_session_id = session_id.trim_end_matches(".jsonl");
-    let session_filename = format!("{}.jsonl", clean_session_id);
+    let clean_id = session_id.trim_end_matches(".jsonl");
+    let session_file = format!("{}.jsonl", clean_id);
 
-    let entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
+    let session_path = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?
+        .flatten()
+        .find_map(|e| {
+            let p = e.path().join(&session_file);
+            p.exists().then_some(p)
+        })
+        .ok_or_else(|| format!("Session file not found for session ID: {}", clean_id))?;
 
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
+    fs::remove_file(&session_path)
+        .map_err(|e| format!("Failed to delete session file: {}", e))?;
+    tracing::info!("Removed session file at {:?}", session_path);
 
-        if !path.is_dir() {
-            continue;
-        }
-
-        let session_path = path.join(&session_filename);
-
-        if session_path.exists() {
-            fs::remove_file(&session_path)
-                .map_err(|e| format!("Failed to delete session file: {}", e))?;
-            tracing::info!("Removed session file at {:?}", session_path);
-
-            let todo_path = todos_dir.join(format!("{}.json", clean_session_id));
-            if todo_path.exists() {
-                match fs::remove_file(&todo_path) {
-                    Ok(_) => tracing::info!("Removed session todo file at {:?}", todo_path),
-                    Err(e) => {
-                        tracing::warn!("Failed to delete session todo file {:?}: {}", todo_path, e)
-                    }
-                }
-            }
-
-            return Ok(());
+    let todo_path = claude_dir.join("todos").join(format!("{}.json", clean_id));
+    if todo_path.exists() {
+        if let Err(e) = fs::remove_file(&todo_path) {
+            tracing::warn!("Failed to delete session todo file {:?}: {}", todo_path, e);
+        } else {
+            tracing::info!("Removed session todo file at {:?}", todo_path);
         }
     }
 
-    Err(format!(
-        "Session file not found for session ID: {}",
-        clean_session_id
-    ))
+    Ok(())
 }
 
-/// Gets all sessions across all projects, sorted by time (newest first)
-///
-/// # Arguments
-/// * `limit` - Maximum number of sessions to return (optional)
-/// * `offset` - Number of sessions to skip (optional)
-/// * `project_path` - Filter sessions by project path (optional)
 pub async fn get_all_sessions(
     limit: Option<usize>,
     offset: Option<usize>,
     project_path: Option<String>,
 ) -> Result<Vec<Session>, String> {
-    tracing::info!(
-        "Getting all sessions across all projects (limit: {:?}, offset: {:?}, project_path: {:?})",
-        limit,
-        offset,
-        project_path
-    );
+    tracing::info!("Getting all sessions (limit: {:?}, offset: {:?}, project_path: {:?})", limit, offset, project_path);
 
     let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
     let projects_dir = claude_dir.join("projects");
@@ -590,277 +354,143 @@ pub async fn get_all_sessions(
         return Ok(Vec::new());
     }
 
-    // First pass: read project directories and filter by project_path if specified
-    // This allows us to avoid reading unnecessary files
-    let mut project_paths = Vec::new();
-    let project_entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
+    let project_infos: Vec<_> = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_dir() { return None; }
 
-    for project_entry in project_entries {
-        let project_entry =
-            project_entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let project_dir_path = project_entry.path();
+            let id = path.file_name()?.to_str()?.to_string();
+            let real_path = get_project_path_from_sessions(&path)
+                .unwrap_or_else(|_| decode_project_path(&id));
 
-        if !project_dir_path.is_dir() {
-            continue;
-        }
-
-        let project_id = project_dir_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| "Invalid directory name".to_string())?
-            .to_string();
-
-        // Get the actual project path from JSONL files
-        let project_real_path = match get_project_path_from_sessions(&project_dir_path) {
-            Ok(path) => path,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to get project path from sessions for {}: {}, falling back to decode",
-                    project_id,
-                    e
-                );
-                decode_project_path(&project_id)
+            if let Some(ref filter) = project_path {
+                if &real_path != filter { return None; }
             }
-        };
 
-        // Filter by project_path if specified (before reading files)
-        if let Some(ref filter_path) = project_path {
-            if project_real_path == *filter_path {
-                project_paths.push((project_dir_path, project_id, project_real_path));
-            }
-        } else {
-            project_paths.push((project_dir_path, project_id, project_real_path));
-        }
-    }
-
-    tracing::info!(
-        "Found {} projects to process (after path filter)",
-        project_paths.len()
-    );
-
-    let mut all_sessions = Vec::new();
-
-    // Second pass: read session files only from filtered projects
-    for (project_path, project_id, project_real_path) in project_paths {
-        // Read all session files in this project
-        let session_entries = match fs::read_dir(&project_path) {
-            Ok(entries) => entries,
-            Err(e) => {
-                tracing::warn!("Failed to read project directory {}: {}", project_id, e);
-                continue;
-            }
-        };
-        println!("Processing project: {} at path: {:?}", project_id, project_path);
-        for session_entry in session_entries {
-            println!("Reading session entry: {:?}", session_entry);
-            let session_entry = match session_entry {
-                Ok(entry) => entry,
-                Err(e) => {
-                    tracing::warn!("Failed to read session entry: {}", e);
-                    continue;
-                }
-            };
-
-            let session_path = session_entry.path();
-
-            if session_path.is_file()
-                && session_path.extension().and_then(|s| s.to_str()) == Some("jsonl")
-            {
-                if let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str()) {
-                    // Get file metadata
-                    let metadata = match fs::metadata(&session_path) {
-                        Ok(meta) => meta,
-                        Err(e) => {
-                            tracing::warn!("Failed to read metadata for {}: {}", session_id, e);
-                            continue;
-                        }
-                    };
-
-                    let created_at = metadata
-                        .created()
-                        .or_else(|_| metadata.modified())
-                        .unwrap_or(SystemTime::UNIX_EPOCH)
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-
-                    // Extract session metadata including message count, duration, and status
-                    let session_metadata = extract_session_metadata(&session_path).await;
-
-                    // Try to load associated todo data
-                    let todo_path = todos_dir.join(format!("{}.json", session_id));
-                    let todo_data = if todo_path.exists() {
-                        fs::read_to_string(&todo_path)
-                            .ok()
-                            .and_then(|content| serde_json::from_str(&content).ok())
-                    } else {
-                        None
-                    };
-
-                    all_sessions.push(Session {
-                        id: session_id.to_string(),
-                        project_id: project_id.clone(),
-                        project_path: project_real_path.clone(),
-                        todo_data,
-                        created_at,
-                        first_message: session_metadata.first_message,
-                        message_timestamp: session_metadata.message_timestamp,
-                        message_count: session_metadata.message_count,
-                        status: session_metadata.status,
-                        total_duration: session_metadata.total_duration,
-                    });
-                }
-            }
-        }
-    }
-
-    // Sort sessions by creation time (newest first)
-    all_sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-
-    let total_count = all_sessions.len();
-    tracing::info!(
-        "Found {} sessions across all projects (before pagination)",
-        total_count
-    );
-
-    // Apply pagination
-    let offset_val = offset.unwrap_or(0);
-    let limit_val = limit.unwrap_or(usize::MAX);
-
-    let paginated_sessions: Vec<Session> = all_sessions
-        .into_iter()
-        .skip(offset_val)
-        .take(limit_val)
+            Some((path, id, real_path))
+        })
         .collect();
 
-    tracing::info!(
-        "Returning {} sessions (offset: {}, limit: {:?})",
-        paginated_sessions.len(),
-        offset_val,
-        limit
-    );
+    tracing::info!("Found {} projects to process", project_infos.len());
 
-    Ok(paginated_sessions)
+    let mut sessions = Vec::new();
+    for (proj_path, proj_id, proj_real_path) in project_infos {
+        let Ok(entries) = fs::read_dir(&proj_path) else { continue };
+
+        for entry in entries.flatten() {
+            let session_path = entry.path();
+            if !session_path.is_file() || session_path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Ok(meta) = fs::metadata(&session_path) else { continue };
+
+            let created_at = meta.created().or_else(|_| meta.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH)
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let session_meta = extract_session_metadata(&session_path).await;
+            let todo_data = todos_dir.join(format!("{}.json", session_id))
+                .exists()
+                .then(|| fs::read_to_string(todos_dir.join(format!("{}.json", session_id))).ok())
+                .flatten()
+                .and_then(|c| serde_json::from_str(&c).ok());
+
+            sessions.push(Session {
+                id: session_id.to_string(),
+                project_id: proj_id.clone(),
+                project_path: proj_real_path.clone(),
+                todo_data,
+                created_at,
+                first_message: session_meta.first_message,
+                message_timestamp: session_meta.message_timestamp,
+                message_count: session_meta.message_count,
+                status: session_meta.status,
+                total_duration: session_meta.total_duration,
+            });
+        }
+    }
+
+    sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    tracing::info!("Found {} sessions total", sessions.len());
+
+    let result: Vec<_> = sessions.into_iter()
+        .skip(offset.unwrap_or(0))
+        .take(limit.unwrap_or(usize::MAX))
+        .collect();
+
+    tracing::info!("Returning {} sessions", result.len());
+    Ok(result)
 }
 
-/// Gets all project working directories with metadata
 pub async fn get_working_directories() -> Result<Vec<WorkingDirectory>, String> {
     tracing::info!("Getting all project working directories");
 
-    let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
-    let projects_dir = claude_dir.join("projects");
-
+    let projects_dir = get_claude_dir().map_err(|e| e.to_string())?.join("projects");
     if !projects_dir.exists() {
         tracing::warn!("Projects directory does not exist: {:?}", projects_dir);
         return Ok(Vec::new());
     }
 
-    let mut directories = Vec::new();
+    let mut directories: Vec<WorkingDirectory> = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_dir() { return None; }
 
-    // Read all project directories
-    let project_entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
+            let real_path = get_project_path_from_sessions(&path).ok()?;
 
-    for project_entry in project_entries {
-        let project_entry =
-            project_entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let project_path = project_entry.path();
+            let components: Vec<&str> = real_path.split('/').collect();
+            let short_name = if components.len() >= 2 {
+                format!("{}/{}", components[components.len() - 2], components[components.len() - 1])
+            } else {
+                real_path.clone()
+            };
 
-        if !project_path.is_dir() {
-            continue;
-        }
+            let (count, most_recent) = fs::read_dir(&path).ok()?
+                .flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    (p.is_file() && p.extension()?.to_str()? == "jsonl").then(|| {
+                        fs::metadata(&p).ok()
+                            .and_then(|m| m.modified().ok())
+                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                    })?
+                })
+                .fold((0, None), |(cnt, max_ts), ts| {
+                    (cnt + 1, Some(max_ts.map_or(ts, |m: u64| m.max(ts))))
+                });
 
-        let project_id = project_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| "Invalid directory name".to_string())?
-            .to_string();
+            let timestamp = most_recent.unwrap_or_else(|| {
+                fs::metadata(&path).ok()
+                    .and_then(|m| m.created().or_else(|_| m.modified()).ok())
+                    .unwrap_or(SystemTime::UNIX_EPOCH)
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            });
 
-        // Get the actual project path from JSONL files
-        let project_real_path = match get_project_path_from_sessions(&project_path) {
-            Ok(path) => path,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to get project path from sessions for {}: {}, skipping",
-                    project_id,
-                    e
-                );
-                continue;
-            }
-        };
+            let last_date = chrono::DateTime::<chrono::Utc>::from(
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp)
+            ).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
-        // Calculate short name (last two path components)
-        let path_components: Vec<&str> = project_real_path.split('/').collect();
-        let short_name = if path_components.len() >= 2 {
-            format!(
-                "{}/{}",
-                path_components[path_components.len() - 2],
-                path_components[path_components.len() - 1]
-            )
-        } else {
-            project_real_path.clone()
-        };
+            Some(WorkingDirectory {
+                path: real_path,
+                short_name,
+                last_date,
+                conversation_count: count,
+            })
+        })
+        .collect();
 
-        // Count sessions and get most recent timestamp
-        let mut session_count = 0;
-        let mut most_recent_timestamp: Option<u64> = None;
-
-        if let Ok(session_entries) = fs::read_dir(&project_path) {
-            for session_entry in session_entries.flatten() {
-                let session_path = session_entry.path();
-                if session_path.is_file()
-                    && session_path.extension().and_then(|s| s.to_str()) == Some("jsonl")
-                {
-                    session_count += 1;
-
-                    // Track most recent modification
-                    if let Ok(metadata) = fs::metadata(&session_path) {
-                        let modified = metadata
-                            .modified()
-                            .unwrap_or(SystemTime::UNIX_EPOCH)
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-
-                        most_recent_timestamp = Some(match most_recent_timestamp {
-                            Some(current) => current.max(modified),
-                            None => modified,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Convert timestamp to ISO 8601 format
-        let last_date = if let Some(timestamp) = most_recent_timestamp {
-            let datetime = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp);
-            // Format as ISO 8601: YYYY-MM-DDTHH:MM:SSZ
-            let datetime_chrono = chrono::DateTime::<chrono::Utc>::from(datetime);
-            datetime_chrono.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-        } else {
-            // If no sessions, use directory creation time
-            let metadata = fs::metadata(&project_path)
-                .map_err(|e| format!("Failed to read directory metadata: {}", e))?;
-            let created = metadata
-                .created()
-                .or_else(|_| metadata.modified())
-                .unwrap_or(SystemTime::UNIX_EPOCH);
-            let datetime_chrono = chrono::DateTime::<chrono::Utc>::from(created);
-            datetime_chrono.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-        };
-
-        directories.push(WorkingDirectory {
-            path: project_real_path,
-            short_name,
-            last_date,
-            conversation_count: session_count,
-        });
-    }
-
-    // Sort by last_date (newest first)
     directories.sort_by(|a, b| b.last_date.cmp(&a.last_date));
-
     tracing::info!("Found {} working directories", directories.len());
     Ok(directories)
 }
