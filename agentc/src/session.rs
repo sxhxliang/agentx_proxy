@@ -2,7 +2,7 @@ use crate::executor::ExecutorKind;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{Duration, Instant};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -33,15 +33,16 @@ pub struct CommandSession {
     pub output_buffer: Arc<Mutex<Vec<OutputLine>>>,
     pub last_accessed: Arc<Mutex<Instant>>,
     pub total_lines: Arc<Mutex<usize>>,
-    /// Channel for new subscribers to receive output
-    pub broadcast_tx: mpsc::UnboundedSender<OutputLine>,
+    /// Channel for new subscribers to receive output (using broadcast for multiple subscribers)
+    pub broadcast_tx: broadcast::Sender<OutputLine>,
     /// Process handle for cancellation (only available while running)
     pub process_handle: Arc<Mutex<Option<tokio::process::Child>>>,
 }
 
 impl CommandSession {
     pub fn new(session_id: String, executor_kind: ExecutorKind) -> Self {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        // Use broadcast channel with capacity of 1000 messages
+        let (tx, _rx) = broadcast::channel(1000);
 
         CommandSession {
             session_id,
@@ -170,12 +171,8 @@ impl CommandSession {
     }
 
     /// Create a new receiver for broadcast updates
-    pub fn create_receiver(&self) -> mpsc::UnboundedReceiver<OutputLine> {
-        // Note: We can't easily create multiple receivers from UnboundedSender
-        // Instead, we'll rely on polling get_output_from() for reconnection
-        // This is a simplified approach - for true broadcast, use tokio::sync::broadcast
-        let (_tx, rx) = mpsc::unbounded_channel();
-        rx
+    pub fn subscribe(&self) -> broadcast::Receiver<OutputLine> {
+        self.broadcast_tx.subscribe()
     }
 }
 
@@ -200,12 +197,6 @@ impl SessionManager {
         });
 
         manager
-    }
-
-    /// Create a new session
-    pub async fn create_session(&self) -> Arc<CommandSession> {
-        self.create_session_with_executor(ExecutorKind::Claude)
-            .await
     }
 
     /// Create a new session with specific executor
@@ -262,18 +253,6 @@ impl SessionManager {
         }
 
         session
-    }
-
-    /// Get session by Claude session ID
-    pub async fn get_session_by_claude_id(
-        &self,
-        claude_session_id: &str,
-    ) -> Option<Arc<CommandSession>> {
-        let claude_map = self.claude_session_map.lock().await;
-        let session_id = claude_map.get(claude_session_id)?.clone();
-        drop(claude_map);
-
-        self.get_session(&session_id).await
     }
 
     /// Register Claude session ID mapping

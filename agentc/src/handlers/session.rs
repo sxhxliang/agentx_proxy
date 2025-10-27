@@ -5,6 +5,7 @@ use crate::executor::{
 use crate::handlers::HandlerState;
 use crate::router::HandlerContext;
 use crate::session::{CommandSession, SessionStatus};
+use crate::agentx::claude;
 use anyhow::{anyhow, Result};
 use common::http::{json_error, HttpResponse};
 use serde_json::{json, Value};
@@ -171,7 +172,7 @@ async fn handle_get_session(
         .unwrap_or(0);
 
     let in_memory_session = state.session_manager.get_session(session_id).await;
-    let historical_messages = crate::claude::load_session_by_id(session_id.to_string())
+    let historical_messages = claude::load_session_by_id(session_id.to_string())
         .await
         .ok();
 
@@ -280,7 +281,7 @@ async fn handle_delete_session(
             proxy_conn_id, session_id
         );
 
-        match crate::claude::delete_session_by_id(session_id.to_string()).await {
+        match claude::delete_session_by_id(session_id.to_string()).await {
             Ok(_) => {
                 let body = json!({
                     "type": "session_deleted",

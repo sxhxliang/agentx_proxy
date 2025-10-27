@@ -118,22 +118,20 @@ impl Route {
 /// HTTP router for handling requests
 #[derive(Clone)]
 pub struct Router {
-    routes: std::sync::Arc<Vec<Route>>,
+    routes: Arc<Vec<Route>>,
 }
 
-impl Router {
-    /// Create a new router
-    pub fn new() -> Self {
-        Router {
-            routes: std::sync::Arc::new(Vec::new()),
-        }
-    }
+/// Builder for constructing a Router
+pub struct RouterBuilder {
+    routes: Vec<Route>,
+}
 
-    /// Get a mutable reference to routes for building
-    fn push_route(&mut self, route: Route) {
-        std::sync::Arc::get_mut(&mut self.routes)
-            .expect("Cannot modify router after it's been cloned")
-            .push(route);
+impl RouterBuilder {
+    /// Create a new router builder
+    pub fn new() -> Self {
+        RouterBuilder {
+            routes: Vec::new(),
+        }
     }
 
     /// Add a route with any HTTP method
@@ -147,7 +145,7 @@ impl Router {
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<HttpResponse>> + Send>>
         });
 
-        self.push_route(Route {
+        self.routes.push(Route {
             method: None,
             path_pattern: path.into(),
             handler: handler_arc,
@@ -165,7 +163,7 @@ impl Router {
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<HttpResponse>> + Send>>
         });
 
-        self.push_route(Route {
+        self.routes.push(Route {
             method: Some(HttpMethod::GET),
             path_pattern: path.into(),
             handler: handler_arc,
@@ -183,7 +181,7 @@ impl Router {
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<HttpResponse>> + Send>>
         });
 
-        self.push_route(Route {
+        self.routes.push(Route {
             method: Some(HttpMethod::POST),
             path_pattern: path.into(),
             handler: handler_arc,
@@ -201,13 +199,22 @@ impl Router {
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<HttpResponse>> + Send>>
         });
 
-        self.push_route(Route {
+        self.routes.push(Route {
             method: Some(HttpMethod::DELETE),
             path_pattern: path.into(),
             handler: handler_arc,
         });
     }
 
+    /// Build the final Router
+    pub fn build(self) -> Router {
+        Router {
+            routes: Arc::new(self.routes),
+        }
+    }
+}
+
+impl Router {
     /// Handle a request
     pub async fn handle(&self, mut ctx: HandlerContext) -> Result<HttpResponse> {
         // Handle OPTIONS requests for CORS preflight
@@ -249,6 +256,12 @@ impl Router {
 }
 
 impl Default for Router {
+    fn default() -> Self {
+        RouterBuilder::new().build()
+    }
+}
+
+impl Default for RouterBuilder {
     fn default() -> Self {
         Self::new()
     }

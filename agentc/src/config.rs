@@ -81,6 +81,68 @@ impl ClientConfig {
         }
     }
 
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), String> {
+        // Validate client_id
+        if self.client_id.trim().is_empty() {
+            return Err("client_id cannot be empty".to_string());
+        }
+
+        // Validate ports are different
+        if self.control_port == self.proxy_port {
+            return Err(format!(
+                "control_port ({}) and proxy_port ({}) must be different",
+                self.control_port, self.proxy_port
+            ));
+        }
+
+        // Validate port numbers are valid
+        if self.control_port == 0 {
+            return Err("control_port cannot be 0".to_string());
+        }
+        if self.proxy_port == 0 {
+            return Err("proxy_port cannot be 0".to_string());
+        }
+        if self.local_port == 0 && !self.command_mode {
+            return Err("local_port cannot be 0 when not in command_mode".to_string());
+        }
+
+        // Validate server address is not empty
+        if self.server_addr.trim().is_empty() {
+            return Err("server_addr cannot be empty".to_string());
+        }
+
+        // Validate local address is not empty when not in command mode
+        if !self.command_mode && self.local_addr.trim().is_empty() {
+            return Err("local_addr cannot be empty when not in command_mode".to_string());
+        }
+
+        // Validate command_path exists if provided
+        if let Some(ref cmd_path) = self.command_path {
+            if !cmd_path.trim().is_empty() && !std::path::Path::new(cmd_path).exists() {
+                return Err(format!("command_path does not exist: {}", cmd_path));
+            }
+        }
+
+        // Validate MCP port is different from control and proxy ports
+        if self.enable_mcp {
+            if self.mcp_port == self.control_port {
+                return Err(format!(
+                    "mcp_port ({}) cannot be the same as control_port ({})",
+                    self.mcp_port, self.control_port
+                ));
+            }
+            if self.mcp_port == self.proxy_port {
+                return Err(format!(
+                    "mcp_port ({}) cannot be the same as proxy_port ({})",
+                    self.mcp_port, self.proxy_port
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     fn generate_machine_code() -> String {
         let entropy = Self::collect_device_entropy();
 

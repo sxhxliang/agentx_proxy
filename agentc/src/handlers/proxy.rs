@@ -7,6 +7,43 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tracing::{error, info};
 
+// Security: Allowed port range (exclude system ports < 1024)
+const ALLOWED_PORT_RANGE: std::ops::RangeInclusive<u16> = 1024..=65535;
+
+// Security: Blocked ports for safety (common services that should not be proxied)
+const BLOCKED_PORTS: &[u16] = &[
+    22,   // SSH
+    23,   // Telnet
+    25,   // SMTP
+    110,  // POP3
+    143,  // IMAP
+    3306, // MySQL
+    5432, // PostgreSQL
+    6379, // Redis
+    27017, // MongoDB
+];
+
+/// Validate port number for security
+fn validate_port(port: u16) -> Result<u16, String> {
+    if !ALLOWED_PORT_RANGE.contains(&port) {
+        return Err(format!(
+            "Port {} is outside allowed range {}-{}",
+            port,
+            ALLOWED_PORT_RANGE.start(),
+            ALLOWED_PORT_RANGE.end()
+        ));
+    }
+
+    if BLOCKED_PORTS.contains(&port) {
+        return Err(format!(
+            "Port {} is blocked for security reasons (common service port)",
+            port
+        ));
+    }
+
+    Ok(port)
+}
+
 /// Handle TCP proxy requests
 pub async fn handle_proxy(ctx: HandlerContext, state: HandlerState) -> Result<HttpResponse> {
     let proxy_conn_id = &ctx.proxy_conn_id;
@@ -39,7 +76,21 @@ pub async fn handle_dynamic_proxy(
 
     // Extract and validate port
     let port: u16 = match ctx.path_params.get("port").and_then(|p| p.parse().ok()) {
-        Some(p) => p,
+        Some(p) => match validate_port(p) {
+            Ok(validated_port) => validated_port,
+            Err(err_msg) => {
+                error!("('{}') Port validation failed: {}", proxy_conn_id, err_msg);
+                let mut stream = ctx.stream;
+                let _ = HttpResponse::new(403)
+                    .json(&serde_json::json!({
+                        "type": "error",
+                        "message": err_msg
+                    }))
+                    .send(&mut stream)
+                    .await;
+                return Ok(HttpResponse::ok());
+            }
+        },
         None => {
             error!("('{}') Invalid port parameter", proxy_conn_id);
             let mut stream = ctx.stream;

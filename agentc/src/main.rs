@@ -1,5 +1,6 @@
-mod claude;
+mod agentx;
 mod config;
+mod error;
 mod executor;
 mod handlers;
 mod mcp;
@@ -15,6 +16,7 @@ use config::ClientConfig;
 use handlers::HandlerState;
 use router::{HandlerContext, Router};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpStream;
 use tracing::{error, info, warn, Level};
@@ -23,6 +25,12 @@ use tracing::{error, info, warn, Level};
 async fn main() -> Result<()> {
     let config = ClientConfig::parse();
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+
+    // Validate configuration
+    if let Err(e) = config.validate() {
+        error!("Configuration validation failed: {}", e);
+        return Err(anyhow!("Invalid configuration: {}", e));
+    }
 
     info!("Starting agentc with client_id: {}", config.client_id);
     info!("Server address: {}", config.control_addr());
@@ -42,8 +50,11 @@ async fn main() -> Result<()> {
     // Create shared state
     let state = HandlerState::new(config.clone());
 
-    // Build router
-    let router = routes::build_router(state);
+    // Extract Arc-wrapped config to avoid repeated cloning in the loop
+    let config_arc = state.config.clone();
+
+    // Build router and wrap in Arc to avoid repeated cloning
+    let router = Arc::new(routes::build_router(state));
 
     let control_stream = TcpStream::connect(config.control_addr()).await?;
     info!("Connected to control port.");
@@ -84,10 +95,11 @@ async fn main() -> Result<()> {
                 match result {
                     Ok(Command::RequestNewProxyConn { proxy_conn_id }) => {
                         info!("Received request for new proxy connection: {}", proxy_conn_id);
-                        let config_clone = config.clone();
-                        let router_clone = router.clone();
+                        // Use Arc::clone for efficient reference counting instead of deep cloning
+                        let config_ref = Arc::clone(&config_arc);
+                        let router_ref = Arc::clone(&router);
                         tokio::spawn(async move {
-                            if let Err(e) = create_proxy_connection(config_clone, router_clone, proxy_conn_id).await {
+                            if let Err(e) = create_proxy_connection(config_ref, router_ref, proxy_conn_id).await {
                                 error!("Failed to create proxy connection: {}", e);
                             }
                         });
@@ -112,8 +124,8 @@ async fn main() -> Result<()> {
 }
 
 async fn create_proxy_connection(
-    config: ClientConfig,
-    router: Router,
+    config: Arc<ClientConfig>,
+    router: Arc<Router>,
     proxy_conn_id: String,
 ) -> Result<()> {
     let command_mode_enabled = config.command_mode;
@@ -139,7 +151,7 @@ async fn create_proxy_connection(
 
 async fn handle_command_mode_connection(
     mut proxy_stream: TcpStream,
-    router: Router,
+    router: Arc<Router>,
     proxy_conn_id: String,
 ) -> Result<()> {
     info!(
@@ -198,11 +210,12 @@ async fn handle_command_mode_connection(
 }
 
 async fn handle_tcp_proxy_connection(
-    config: ClientConfig,
+    config: Arc<ClientConfig>,
     proxy_stream: TcpStream,
     proxy_conn_id: String,
 ) -> Result<()> {
-    let state = HandlerState::new(config);
+    // Clone the config from Arc for HandlerState::new
+    let state = HandlerState::new((*config).clone());
     let ctx = HandlerContext {
         request: http::HttpRequest {
             method: http::HttpMethod::GET,
