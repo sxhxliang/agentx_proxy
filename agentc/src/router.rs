@@ -48,11 +48,58 @@ impl Route {
         let pattern_parts: Vec<&str> = self.path_pattern.split('/').collect();
         let path_parts: Vec<&str> = path.split('/').collect();
 
+        let mut params = HashMap::new();
+
+        // Check if pattern contains wildcard parameter (e.g., {*path})
+        let mut wildcard_index = None;
+        for (i, pattern_part) in pattern_parts.iter().enumerate() {
+            if pattern_part.starts_with("{*") && pattern_part.ends_with('}') {
+                wildcard_index = Some(i);
+                break;
+            }
+        }
+
+        if let Some(wildcard_idx) = wildcard_index {
+            // Handle wildcard matching
+            // Pattern must have at least as many parts before wildcard as path has
+            if path_parts.len() < wildcard_idx {
+                return None;
+            }
+
+            // Match all parts before the wildcard
+            for i in 0..wildcard_idx {
+                let pattern_part = pattern_parts[i];
+                let path_part = path_parts[i];
+
+                if pattern_part.starts_with('{') && pattern_part.ends_with('}') {
+                    // Regular parameter
+                    let param_name = &pattern_part[1..pattern_part.len() - 1];
+                    params.insert(param_name.to_string(), path_part.to_string());
+                } else if pattern_part != path_part {
+                    return None;
+                }
+            }
+
+            // Capture remaining path as wildcard parameter
+            let wildcard_pattern = pattern_parts[wildcard_idx];
+            let param_name = &wildcard_pattern[2..wildcard_pattern.len() - 1]; // Remove {* and }
+
+            // Join remaining path parts
+            let remaining_path = if wildcard_idx < path_parts.len() {
+                path_parts[wildcard_idx..].join("/")
+            } else {
+                String::new()
+            };
+
+            params.insert(param_name.to_string(), remaining_path);
+
+            return Some(params);
+        }
+
+        // Regular matching without wildcard (original logic)
         if pattern_parts.len() != path_parts.len() {
             return None;
         }
-
-        let mut params = HashMap::new();
 
         for (pattern_part, path_part) in pattern_parts.iter().zip(path_parts.iter()) {
             if pattern_part.starts_with('{') && pattern_part.ends_with('}') {

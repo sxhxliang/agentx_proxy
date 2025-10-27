@@ -31,7 +31,7 @@ pub struct ClientConfig {
     pub local_port: u16,
 
     /// Enable command mode (execute a command instead of TCP proxy)
-    #[arg(long)]
+    #[arg(long, default_value_t = true)]
     pub command_mode: bool,
 
     /// Command to execute in command mode

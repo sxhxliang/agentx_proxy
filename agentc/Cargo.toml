@@ -20,6 +20,7 @@ regex = "1.12.2"
 chrono = "0.4"
 hostname = "0.3"
 tokio-util = "0.7"
+urlencoding = { workspace = true }
 # hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "service", "http1"] }
 http = "0.2"

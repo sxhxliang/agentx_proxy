@@ -10,6 +10,7 @@ pub fn build_router(state: HandlerState) -> Router {
     register_session_routes(&mut router, &state);
     register_claude_project_routes(&mut router);
     register_claude_session_routes(&mut router);
+    register_proxy_routes(&mut router, &state);
     router
 }
 
@@ -201,6 +202,22 @@ fn register_claude_session_routes(router: &mut Router) {
                 let _ = http::json_error(status, e).send(&mut stream).await;
                 Ok(http::HttpResponse::ok())
             }
+        }
+    });
+}
+
+fn register_proxy_routes(router: &mut Router, state: &HandlerState) {
+    // Dynamic proxy route: /proxy/{port}/{*path}
+    // This forwards requests to local services on different ports
+    // Examples:
+    //   /proxy/8080/api/users -> 127.0.0.1:8080/api/users
+    //   /proxy/3000/ -> 127.0.0.1:3000/
+    //   /proxy/9000/health?check=true -> 127.0.0.1:9000/health?check=true
+    router.route("/proxy/{port}/{*path}", {
+        let state = state.clone();
+        move |ctx| {
+            let state = state.clone();
+            async move { handlers::proxy::handle_dynamic_proxy(ctx, state).await }
         }
     });
 }
