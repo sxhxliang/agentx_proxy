@@ -1,6 +1,5 @@
 mod agentx;
 mod config;
-mod error;
 mod executor;
 mod handlers;
 mod mcp;
