@@ -21,21 +21,24 @@ pub fn register_claude_project_routes(router_builder: &mut RouterBuilder) {
         Ok(http::HttpResponse::ok())
     });
 
-    router_builder.get("/api/claude/projects/working-directories", |ctx| async move {
-        let mut stream = ctx.stream;
-        match claude::get_working_directories().await {
-            Ok(directories) => {
-                let body = json!({
-                    "directories": directories
-                });
-                let _ = http::HttpResponse::ok().json(&body).send(&mut stream).await;
+    router_builder.get(
+        "/api/claude/projects/working-directories",
+        |ctx| async move {
+            let mut stream = ctx.stream;
+            match claude::get_working_directories().await {
+                Ok(directories) => {
+                    let body = json!({
+                        "directories": directories
+                    });
+                    let _ = http::HttpResponse::ok().json(&body).send(&mut stream).await;
+                }
+                Err(e) => {
+                    let _ = http::json_error(500, e).send(&mut stream).await;
+                }
             }
-            Err(e) => {
-                let _ = http::json_error(500, e).send(&mut stream).await;
-            }
-        }
-        Ok(http::HttpResponse::ok())
-    });
+            Ok(http::HttpResponse::ok())
+        },
+    );
 }
 
 pub fn register_claude_session_routes(router_builder: &mut RouterBuilder) {

@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpStream;
-use tracing::{error, info, warn, Level};
+use tracing::{debug, error, info, warn, Level};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,8 +32,13 @@ async fn main() -> Result<()> {
     }
 
     info!("Starting agentc with client_id: {}", config.client_id);
-    info!("Server address: {}", config.control_addr());
-    info!("Local service: {}", config.local_service_addr());
+    info!("Starting agentc...");
+    debug!("Server address: {}", config.control_addr());
+    if config.command_mode {
+        info!("Running in command mode.");
+    } else {
+        debug!("Local service: {}", config.local_service_addr());
+    }
 
     // Start MCP server if enabled
     if config.enable_mcp {

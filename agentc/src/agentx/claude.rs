@@ -143,7 +143,7 @@ fn extract_content_text(content: &ContentField) -> Option<String> {
                 .iter()
                 .filter_map(|item| {
                     (item.item_type.as_deref() == Some("text"))
-                        .then(|| item.text.as_ref())
+                        .then_some(item.text.as_ref())
                         .flatten()
                         .filter(|text| !should_filter_text(text))
                         .map(|s| s.as_str())

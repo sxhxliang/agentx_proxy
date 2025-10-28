@@ -6,12 +6,12 @@ use uuid::Uuid;
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct ClientConfig {
-    /// Unique ID for this client instance.
+    /// Unique ID for this client instance (Mechine Code).
     #[arg(short, long, default_value_t = default_client_id())]
     pub client_id: String,
 
     /// Address of the agents server.
-    #[arg(short, long, default_value = "127.0.0.1")]
+    #[arg(short, long, default_value = "proxy.agentx.plus")]
     pub server_addr: String,
 
     /// Port for the agents control connection.
@@ -27,8 +27,8 @@ pub struct ClientConfig {
     pub local_addr: String,
 
     /// Port of the local service to expose.
-    #[arg(long, default_value_t = 3000)]
-    pub local_port: u16,
+    #[arg(long)]
+    pub local_port: Option<u16>,
 
     /// Enable command mode (execute a command instead of TCP proxy)
     #[arg(long, default_value_t = true)]
@@ -68,7 +68,10 @@ impl ClientConfig {
 
     /// Get the local service address
     pub fn local_service_addr(&self) -> String {
-        format!("{}:{}", self.local_addr, self.local_port)
+        match self.local_port {
+            Some(port) => format!("{}:{}", self.local_addr, port),
+            None => format!("{}:{}", self.local_addr, 80), // Or handle error as appropriate
+        }
     }
 
     /// Ensure a valid client_id is present, generating one if needed.
@@ -103,7 +106,7 @@ impl ClientConfig {
         if self.proxy_port == 0 {
             return Err("proxy_port cannot be 0".to_string());
         }
-        if self.local_port == 0 && !self.command_mode {
+        if self.local_port == Some(0) && !self.command_mode {
             return Err("local_port cannot be 0 when not in command_mode".to_string());
         }
 
