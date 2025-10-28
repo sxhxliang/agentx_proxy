@@ -122,18 +122,18 @@ When `--command-mode` is enabled, agentc runs an HTTP router instead of simple T
 ### API Routes (agentc/src/routes.rs)
 
 Session management:
-- `POST /sessions` - Create new command execution session
-- `GET /sessions/{session_id}` - Get session details or reconnect
-- `DELETE /sessions/{session_id}` - Cancel/delete session
-- `POST /sessions/{session_id}/cancel` - Cancel without deleting history
+- `POST /api/sessions` - Create new command execution session
+- `GET /api/sessions/{session_id}` - Get session details or reconnect
+- `DELETE /api/sessions/{session_id}` - Cancel/delete session
+- `POST /api/sessions/{session_id}/cancel` - Cancel without deleting history
 
 Claude integration:
-- `GET /claude/projects` - List Claude projects
-- `GET /claude/projects/working-directories` - Get working directories
-- `GET /claude/projects/{project_id}/sessions` - Get project sessions
-- `GET /claude/sessions` - List all Claude sessions
-- `GET /claude/sessions/{session_id}` - Load session messages
-- `DELETE /claude/sessions/{session_id}` - Delete session
+- `GET /api/claude/projects` - List Claude projects
+- `GET /api/claude/projects/working-directories` - Get working directories
+- `GET /api/claude/projects/{project_id}/sessions` - Get project sessions
+- `GET /api/claude/sessions` - List all Claude sessions
+- `GET /api/claude/sessions/{session_id}` - Load session messages
+- `DELETE /api/claude/sessions/{session_id}` - Delete session
 
 ## Client ID Generation
 

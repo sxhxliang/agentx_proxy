@@ -16,8 +16,8 @@ pub fn build_router(state: HandlerState) -> Router {
 }
 
 fn register_session_routes(router_builder: &mut RouterBuilder, state: &HandlerState) {
-    // POST /sessions - Create new command execution session
-    router_builder.post("/sessions", {
+    // POST /api/sessions - Create new command execution session
+    router_builder.post("/api/sessions", {
         let state = state.clone();
         move |ctx| {
             let state = state.clone();
@@ -25,8 +25,8 @@ fn register_session_routes(router_builder: &mut RouterBuilder, state: &HandlerSt
         }
     });
 
-    // GET /sessions/{session_id} - Get session details or reconnect to active session
-    router_builder.get("/sessions/{session_id}", {
+    // GET /api/sessions/{session_id} - Get session details or reconnect to active session
+    router_builder.get("/api/sessions/{session_id}", {
         let state = state.clone();
         move |ctx| {
             let state = state.clone();
@@ -34,8 +34,8 @@ fn register_session_routes(router_builder: &mut RouterBuilder, state: &HandlerSt
         }
     });
 
-    // DELETE /sessions/{session_id} - Cancel active session or delete historical session
-    router_builder.delete("/sessions/{session_id}", {
+    // DELETE /api/sessions/{session_id} - Cancel active session or delete historical session
+    router_builder.delete("/api/sessions/{session_id}", {
         let state = state.clone();
         move |ctx| {
             let state = state.clone();
@@ -43,8 +43,8 @@ fn register_session_routes(router_builder: &mut RouterBuilder, state: &HandlerSt
         }
     });
 
-    // POST /sessions/{session_id}/cancel - Cancel session without deleting history
-    router_builder.post("/sessions/{session_id}/cancel", {
+    // POST /api/sessions/{session_id}/cancel - Cancel session without deleting history
+    router_builder.post("/api/sessions/{session_id}/cancel", {
         let state = state.clone();
         move |ctx| {
             let state = state.clone();

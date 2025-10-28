@@ -86,15 +86,15 @@ cargo run -p agentc -- \
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST /sessions` | 创建新的命令执行会话，支持选择执行器、模型、提示语、项目路径等。 |
-| `GET /sessions/{session_id}` | 查看会话状态与输出，或在连接中断后重新订阅输出。 |
-| `DELETE /sessions/{session_id}` | 终止并删除指定会话。 |
-| `POST /sessions/{session_id}/cancel` | 向正在运行的会话发送取消信号，仅结束执行但保留历史。 |
-| `GET /claude/projects` | 枚举本地 Claude 项目与最近会话。 |
-| `GET /claude/projects/{project_id}/sessions` | 查看指定项目下的 Claude 会话列表。 |
-| `GET /claude/sessions` | 按分页检索 Claude 会话，可通过 `limit`、`offset`、`projectPath` 过滤。 |
-| `GET /claude/sessions/{session_id}` | 加载单个 Claude 会话的消息历史。 |
-| `DELETE /claude/sessions/{session_id}` | 删除本地存储的 Claude 会话文件。 |
+| `POST /api/sessions` | 创建新的命令执行会话，支持选择执行器、模型、提示语、项目路径等。 |
+| `GET /api/sessions/{session_id}` | 查看会话状态与输出，或在连接中断后重新订阅输出。 |
+| `DELETE /api/sessions/{session_id}` | 终止并删除指定会话。 |
+| `POST /api/sessions/{session_id}/cancel` | 向正在运行的会话发送取消信号，仅结束执行但保留历史。 |
+| `GET /api/claude/projects` | 枚举本地 Claude 项目与最近会话。 |
+| `GET /api/claude/projects/{project_id}/sessions` | 查看指定项目下的 Claude 会话列表。 |
+| `GET /api/claude/sessions` | 按分页检索 Claude 会话，可通过 `limit`、`offset`、`projectPath` 过滤。 |
+| `GET /api/claude/sessions/{session_id}` | 加载单个 Claude 会话的消息历史。 |
+| `DELETE /api/claude/sessions/{session_id}` | 删除本地存储的 Claude 会话文件。 |
 
 除上述接口外，`routes.rs` 中还可以自定义命令路由以满足特定业务需求。
 

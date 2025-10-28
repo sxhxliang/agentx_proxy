@@ -23,17 +23,17 @@ pub async fn handle_session(ctx: HandlerContext, state: HandlerState) -> Result<
     let session_id = ctx.path_params.get("session_id").cloned();
 
     match (method, session_id) {
-        // POST /sessions - Create new session
+        // POST /api/sessions - Create new session
         (common::http::HttpMethod::POST, None) => handle_create_session(ctx, state).await,
-        // GET /sessions/{session_id} - Get session or reconnect
+        // GET /api/sessions/{session_id} - Get session or reconnect
         (common::http::HttpMethod::GET, Some(session_id)) => {
             handle_get_session(ctx, state, &session_id).await
         }
-        // DELETE /sessions/{session_id} - Cancel or delete session
+        // DELETE /api/sessions/{session_id} - Cancel or delete session
         (common::http::HttpMethod::DELETE, Some(session_id)) => {
             handle_delete_session(ctx, state, &session_id).await
         }
-        // GET /sessions - List all sessions (future implementation)
+        // GET /api/sessions - List all sessions (future implementation)
         (common::http::HttpMethod::GET, None) => {
             info!("('{}') List sessions request", proxy_conn_id);
             let mut stream = ctx.stream;
@@ -52,7 +52,7 @@ pub async fn handle_session(ctx: HandlerContext, state: HandlerState) -> Result<
     }
 }
 
-/// Handle session creation (POST /sessions)
+/// Handle session creation (POST /api/sessions)
 async fn handle_create_session(ctx: HandlerContext, state: HandlerState) -> Result<HttpResponse> {
     let proxy_conn_id = ctx.proxy_conn_id.clone();
     let request = &ctx.request;
@@ -158,7 +158,7 @@ async fn handle_create_session(ctx: HandlerContext, state: HandlerState) -> Resu
     stream_session_output(ctx, session, 0).await
 }
 
-/// Handle session retrieval or reconnection (GET /sessions/{session_id})
+/// Handle session retrieval or reconnection (GET /api/sessions/{session_id})
 async fn handle_get_session(
     ctx: HandlerContext,
     state: HandlerState,
@@ -186,7 +186,7 @@ async fn handle_get_session(
     stream_unified_session(ctx, in_memory_session, historical_messages, from_line).await
 }
 
-/// Handle session cancellation without deletion (POST /sessions/{session_id}/cancel)
+/// Handle session cancellation without deletion (POST /api/sessions/{session_id}/cancel)
 pub async fn handle_cancel_session(
     ctx: HandlerContext,
     state: HandlerState,
@@ -225,7 +225,7 @@ pub async fn handle_cancel_session(
     Ok(HttpResponse::ok())
 }
 
-/// Handle session deletion/cancellation (DELETE /sessions/{session_id})
+/// Handle session deletion/cancellation (DELETE /api/sessions/{session_id})
 async fn handle_delete_session(
     ctx: HandlerContext,
     state: HandlerState,

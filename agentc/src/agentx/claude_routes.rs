@@ -4,7 +4,7 @@ use common::http;
 use serde_json::json;
 
 pub fn register_claude_project_routes(router_builder: &mut RouterBuilder) {
-    router_builder.get("/claude/projects", |ctx| async move {
+    router_builder.get("/api/claude/projects", |ctx| async move {
         let mut stream = ctx.stream;
         match claude::list_projects().await {
             Ok(projects) => {
@@ -21,7 +21,7 @@ pub fn register_claude_project_routes(router_builder: &mut RouterBuilder) {
         Ok(http::HttpResponse::ok())
     });
 
-    router_builder.get("/claude/projects/working-directories", |ctx| async move {
+    router_builder.get("/api/claude/projects/working-directories", |ctx| async move {
         let mut stream = ctx.stream;
         match claude::get_working_directories().await {
             Ok(directories) => {
@@ -39,7 +39,7 @@ pub fn register_claude_project_routes(router_builder: &mut RouterBuilder) {
 }
 
 pub fn register_claude_session_routes(router_builder: &mut RouterBuilder) {
-    router_builder.get("/claude/sessions", |ctx| async move {
+    router_builder.get("/api/claude/sessions", |ctx| async move {
         let limit = ctx
             .request
             .query_param("limit")
@@ -66,7 +66,7 @@ pub fn register_claude_session_routes(router_builder: &mut RouterBuilder) {
         Ok(http::HttpResponse::ok())
     });
 
-    router_builder.get("/claude/sessions/{session_id}", |ctx| async move {
+    router_builder.get("/api/claude/sessions/{session_id}", |ctx| async move {
         let session_id = match ctx.path_params.get("session_id") {
             Some(v) if !v.is_empty() => v.clone(),
             _ => {
@@ -96,7 +96,7 @@ pub fn register_claude_session_routes(router_builder: &mut RouterBuilder) {
         }
     });
 
-    router_builder.delete("/claude/sessions/{session_id}", |ctx| async move {
+    router_builder.delete("/api/claude/sessions/{session_id}", |ctx| async move {
         let session_id = match ctx.path_params.get("session_id") {
             Some(v) if !v.is_empty() => v.clone(),
             _ => {
