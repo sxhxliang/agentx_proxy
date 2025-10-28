@@ -278,10 +278,8 @@ impl HttpResponse {
             );
         }
         if !self.headers.contains_key("Access-Control-Allow-Headers") {
-            self.headers.insert(
-                "Access-Control-Allow-Headers".to_string(),
-                "Content-Type, Authorization".to_string(),
-            );
+            self.headers
+                .insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
         }
 
         // Add content-length header

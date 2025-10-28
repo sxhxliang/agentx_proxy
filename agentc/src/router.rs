@@ -223,10 +223,7 @@ impl Router {
                     "Access-Control-Allow-Methods",
                     "GET, POST, PUT, DELETE, PATCH, OPTIONS",
                 )
-                .header(
-                    "Access-Control-Allow-Headers",
-                    "Content-Type, Authorization",
-                )
+                .header("Access-Control-Allow-Headers", "*")
                 .header("Access-Control-Max-Age", "86400")
                 .body(Vec::new()));
         }
