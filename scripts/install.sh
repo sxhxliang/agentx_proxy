@@ -30,9 +30,9 @@ echo "检测到系统: $OS ($ARCH)"
 echo "目标平台: $TARGET"
 echo ""
 
-read -p "Control port [17001]: " CONTROL_PORT
-read -p "Proxy port [17002]: " PROXY_PORT
-read -p "Public port [17003]: " PUBLIC_PORT
+read -p "Control port [17001]: " CONTROL_PORT </dev/tty
+read -p "Proxy port [17002]: " PROXY_PORT </dev/tty
+read -p "Public port [17003]: " PUBLIC_PORT </dev/tty
 CONTROL_PORT=${CONTROL_PORT:-17001}
 PROXY_PORT=${PROXY_PORT:-17002}
 PUBLIC_PORT=${PUBLIC_PORT:-17003}
