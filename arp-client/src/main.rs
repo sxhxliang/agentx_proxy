@@ -60,9 +60,9 @@ async fn main() -> Result<()> {
     info!("Starting arpc...");
     debug!("Server address: {}", config.control_addr());
     if config.command_mode {
-        debug!("Running in command mode.");
+        info!("Running in command mode.");
     } else {
-        debug!("Local service: {}", config.local_service_addr());
+        info!("Local service: {}", config.local_service_addr());
     }
 
     // Start MCP server if enabled
@@ -193,7 +193,7 @@ async fn handle_command_mode_connection(
     router: Arc<Router>,
     proxy_conn_id: String,
 ) -> Result<()> {
-    info!(
+    debug!(
         "('{}') Running in command mode (HTTP routing)",
         proxy_conn_id
     );

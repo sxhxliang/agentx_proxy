@@ -7,9 +7,8 @@ use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
-use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 use tracing::{error, info, warn, Level};
 
@@ -25,12 +24,12 @@ struct Args {
     #[arg(long, default_value_t = 17003)]
     public_port: u16,
 
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 5)]
     pool_size: usize,
 }
 
 struct ClientInfo {
-    writer: Arc<Mutex<OwnedWriteHalf>>,
+    cmd_tx: mpsc::UnboundedSender<Command>,
     pool: Arc<SegQueue<TcpStream>>,
 }
 
@@ -55,7 +54,7 @@ fn generate_id() -> String {
     format!("{:x}", id)
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
     let args = Args::parse();
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
@@ -76,7 +75,7 @@ async fn main() -> Result<()> {
     let pool_maintainer_clients = active_clients.clone();
     let target_pool_size = args.pool_size;
     tokio::spawn(async move {
-        maintain_connection_pools(pool_maintainer_clients, target_pool_size).await;
+        maintain_connection_pools(pool_maintainer_clients, target_pool_size, true).await;
     });
 
     // Spawn background task to cleanup expired pending connections
@@ -106,7 +105,7 @@ fn tune_tcp_socket(stream: &TcpStream) -> Result<()> {
 
     let fd = stream.as_raw_fd();
     unsafe {
-        let buf_size: libc::c_int = 262144; // 256KB
+        let buf_size: libc::c_int = 524288; // 512KB
         libc::setsockopt(
             fd,
             libc::SOL_SOCKET,
@@ -121,6 +120,19 @@ fn tune_tcp_socket(stream: &TcpStream) -> Result<()> {
             &buf_size as *const _ as *const libc::c_void,
             std::mem::size_of::<libc::c_int>() as libc::socklen_t,
         );
+
+        // Enable TCP_QUICKACK on Linux for lower latency
+        #[cfg(target_os = "linux")]
+        {
+            let quickack: libc::c_int = 1;
+            libc::setsockopt(
+                fd,
+                libc::IPPROTO_TCP,
+                libc::TCP_QUICKACK,
+                &quickack as *const _ as *const libc::c_void,
+                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            );
+        }
     }
     Ok(())
 }
@@ -148,8 +160,7 @@ async fn handle_control_connections(
 }
 
 async fn handle_single_client(stream: TcpStream, active_clients: ActiveClients) -> Result<()> {
-    let (mut reader, writer) = stream.into_split();
-    let writer = Arc::new(Mutex::new(writer));
+    let (mut reader, mut writer) = stream.into_split();
 
     let client_id = if let Command::Register { client_id: id } = read_command(&mut reader).await? {
         info!("Registration attempt for client_id: {}", id);
@@ -161,22 +172,39 @@ async fn handle_single_client(stream: TcpStream, active_clients: ActiveClients) 
             while old_info.pool.pop().is_some() {}
         }
 
+        // Create channel for sending commands
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+
         active_clients.insert(
             id.clone(),
             Arc::new(ClientInfo {
-                writer: writer.clone(),
+                cmd_tx,
                 pool: Arc::new(SegQueue::new()),
             }),
         );
-        let _ = write_command(
-            &mut *writer.lock().await,
+
+        // Send registration success
+        write_command(
+            &mut writer,
             &Command::RegisterResult {
                 success: true,
                 error: None,
             },
         )
-        .await;
+        .await?;
         info!("Client {} registered successfully.", id);
+
+        // Spawn task to handle command sending
+        let client_id_clone = id.clone();
+        tokio::spawn(async move {
+            while let Some(cmd) = cmd_rx.recv().await {
+                if write_command(&mut writer, &cmd).await.is_err() {
+                    error!("Failed to send command to client {}", client_id_clone);
+                    break;
+                }
+            }
+        });
+
         id
     } else {
         return Err(anyhow!("First command was not Register"));
@@ -204,13 +232,10 @@ async fn handle_proxy_connections(
     active_clients: ActiveClients,
 ) -> Result<()> {
     loop {
-        let (mut proxy_stream, addr) = listener.accept().await?;
-        info!("New proxy connection from: {}", addr);
+        let (mut proxy_stream, _addr) = listener.accept().await?;
 
         // Tune TCP socket for proxy connection (high throughput)
-        if let Err(e) = tune_tcp_socket(&proxy_stream) {
-            warn!("Failed to tune proxy socket for {}: {}", addr, e);
-        }
+        let _ = tune_tcp_socket(&proxy_stream);
 
         let pending_clone = pending_connections.clone();
         let clients_clone = active_clients.clone();
@@ -221,17 +246,9 @@ async fn handle_proxy_connections(
                 client_id,
             }) = read_command(&mut proxy_stream).await
             {
-                info!(
-                    "Received proxy conn notification for id: {} from client: {}",
-                    proxy_conn_id, client_id
-                );
                 if let Some((_, pending_conn)) = pending_clone.remove(&proxy_conn_id) {
                     let user_stream = pending_conn.stream;
                     let http_request = pending_conn.http_request;
-                    info!(
-                        "Pairing user stream with proxy stream for id: {}",
-                        proxy_conn_id
-                    );
                     tokio::spawn(async move {
                         // If there's a parsed HTTP request, reconstruct it first
                         if let Some(request) = http_request {
@@ -242,26 +259,14 @@ async fn handle_proxy_connections(
                         }
 
                         // Now join the streams
-                        if let Err(e) = join_streams(user_stream, proxy_stream).await {
-                            error!("Error joining streams: {}", e);
-                        }
-                        info!("Streams for {} joined and finished.", proxy_conn_id);
+                        let _ = join_streams(user_stream, proxy_stream).await;
                     });
                 } else {
                     // No pending request - this is for the pool
-                    info!(
-                        "No pending request for {}, adding to client {} pool",
-                        proxy_conn_id, client_id
-                    );
                     if let Some(client_info) = clients_clone.get(&client_id) {
                         client_info.pool.push(proxy_stream);
-                        info!("Added connection to pool for client {}", client_id);
-                    } else {
-                        warn!("Client {} not found for pool connection", client_id);
                     }
                 }
-            } else {
-                error!("Failed to read NewProxyConn command from {}", addr);
             }
         });
     }
@@ -273,27 +278,21 @@ async fn handle_public_connections(
     pending_connections: PendingConnectionsMap,
 ) -> Result<()> {
     loop {
-        let (user_stream, addr) = listener.accept().await?;
-        info!("New public connection from: {}", addr);
+        let (user_stream, _addr) = listener.accept().await?;
 
         // Tune TCP socket for public connection (low latency critical)
-        if let Err(e) = tune_tcp_socket(&user_stream) {
-            warn!("Failed to tune public socket for {}: {}", addr, e);
-        }
+        let _ = tune_tcp_socket(&user_stream);
 
         let active_clients_clone = active_clients.clone();
         let pending_connections_clone = pending_connections.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = route_public_connection(
+            let _ = route_public_connection(
                 user_stream,
                 active_clients_clone,
                 pending_connections_clone,
             )
-            .await
-            {
-                error!("Failed to route public connection from {}: {}", addr, e);
-            }
+            .await;
         });
     }
 }
@@ -390,7 +389,6 @@ async fn route_public_connection(
     };
 
     // Token-based routing
-    info!("Token-based routing: looking for client_id '{}'", token);
 
     let client_info = match active_clients.get(token) {
         Some(info) => info,
@@ -406,11 +404,8 @@ async fn route_public_connection(
         }
     };
 
-    info!("Found client '{}' matching token", token);
-
     // Phase 2: Try to get connection from pool first (fast path)
     if let Some(mut proxy_stream) = client_info.pool.pop() {
-        info!("Using pooled connection (fast path)");
 
         // If we parsed HTTP, we need to reconstruct and send the request
         if let Some(request) = http_request {
@@ -435,11 +430,6 @@ async fn route_public_connection(
         proxy_conn_id: proxy_conn_id.clone(),
     };
 
-    info!(
-        "Pool empty, requesting new proxy connection with id: {}",
-        proxy_conn_id
-    );
-
     // Insert into pending before sending command to avoid race condition
     let pending_conn = PendingConnection {
         stream: user_stream,
@@ -448,22 +438,12 @@ async fn route_public_connection(
     };
     pending_connections.insert(proxy_conn_id.clone(), pending_conn);
 
-    // Send command to client
-    let mut writer = client_info.writer.lock().await;
-    if let Err(e) = write_command(&mut *writer, &command).await {
-        error!(
-            "Failed to send RequestNewProxyConn to client: {}. Connection will timeout.",
-            e
-        );
-        // Clean up pending connection
+    // Send command to client via channel
+    if client_info.cmd_tx.send(command).is_err() {
         pending_connections.remove(&proxy_conn_id);
-        return Err(e);
+        return Err(anyhow!("Client channel closed"));
     }
 
-    info!(
-        "Successfully sent RequestNewProxyConn with id {}",
-        proxy_conn_id
-    );
     Ok(())
 }
 
@@ -500,8 +480,26 @@ async fn cleanup_expired_connections(pending_connections: PendingConnectionsMap)
 }
 
 // Background task to maintain connection pools for all clients
-async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_size: usize) {
-    let mut ticker = interval(Duration::from_secs(5));
+async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_size: usize, prewarm: bool) {
+    // Prewarm pools immediately on first run
+    if prewarm {
+        for entry in active_clients.iter() {
+            let (client_id, client_info) = entry.pair();
+            info!("Prewarming pool for client {} with {} connections", client_id, target_pool_size);
+
+            for _ in 0..target_pool_size {
+                let pool_conn_id = generate_id();
+                let command = Command::RequestNewProxyConn {
+                    proxy_conn_id: pool_conn_id.clone(),
+                };
+                if client_info.cmd_tx.send(command).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+
+    let mut ticker = interval(Duration::from_secs(2));
 
     loop {
         ticker.tick().await;
@@ -513,11 +511,6 @@ async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_si
             if current_size < target_pool_size {
                 let needed = target_pool_size - current_size;
 
-                info!(
-                    "Client {} pool has {} connections, requesting {} more",
-                    client_id, current_size, needed
-                );
-
                 // Request additional connections to fill the pool
                 for _ in 0..needed {
                     let pool_conn_id = generate_id();
@@ -525,12 +518,10 @@ async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_si
                         proxy_conn_id: pool_conn_id.clone(),
                     };
 
-                    let mut writer = client_info.writer.lock().await;
-                    if let Err(e) = write_command(&mut *writer, &command).await {
-                        error!("Failed to request pool connection for {}: {}", client_id, e);
+                    if client_info.cmd_tx.send(command).is_err() {
+                        error!("Failed to request pool connection for {}: channel closed", client_id);
                         break;
                     }
-                    drop(writer); // Release lock between requests
                 }
             }
         }
