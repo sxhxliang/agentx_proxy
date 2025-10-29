@@ -12,7 +12,8 @@ anyhow = { workspace = true }
 uuid = { workspace = true, features = ["v4", "v5"] }
 clap = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-appender = "0.2"
 serde_json = { workspace = true }
 which = { workspace = true }
 dirs = "6.0.0"

@@ -18,12 +18,34 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpStream;
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = ClientConfig::parse();
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+
+    // Setup dual logging: all levels -> file, INFO -> terminal
+    let log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("arpc/logs");
+    std::fs::create_dir_all(&log_dir)?;
+
+    let (non_blocking, _guard) =
+        tracing_appender::non_blocking(tracing_appender::rolling::daily(log_dir, "arpc.log"));
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false),
+        )
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
+        )
+        .init();
 
     // Validate configuration
     if let Err(e) = config.validate() {
@@ -31,11 +53,14 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Invalid configuration: {}", e));
     }
 
-    info!("Starting arpc with client_id: {}", config.client_id);
+    info!(
+        "✅ Starting arpc with client_id（Token）: {}",
+        config.client_id
+    );
     info!("Starting arpc...");
     debug!("Server address: {}", config.control_addr());
     if config.command_mode {
-        info!("Running in command mode.");
+        debug!("Running in command mode.");
     } else {
         debug!("Local service: {}", config.local_service_addr());
     }
@@ -87,7 +112,17 @@ async fn main() -> Result<()> {
             ));
         }
     }
-
+    if config.server_addr != "proxy.agentx.plus" {
+        info!(
+            "🌐 Public URL: {}:17003?token={}",
+            config.server_addr, config.client_id
+        );
+    } else {
+        info!(
+            "🌐 Public URL: https://console.agentx.plus/?token={}",
+            config.client_id
+        );
+    }
     // Main loop to listen for commands from the server
     loop {
         tokio::select! {
@@ -98,7 +133,7 @@ async fn main() -> Result<()> {
             result = read_command(&mut reader) => {
                 match result {
                     Ok(Command::RequestNewProxyConn { proxy_conn_id }) => {
-                        info!("Received request for new proxy connection: {}", proxy_conn_id);
+                        debug!("Received request for new proxy connection: {}", proxy_conn_id);
                         // Use Arc::clone for efficient reference counting instead of deep cloning
                         let config_ref = Arc::clone(&config_arc);
                         let router_ref = Arc::clone(&router);
@@ -134,14 +169,14 @@ async fn create_proxy_connection(
 ) -> Result<()> {
     let command_mode_enabled = config.command_mode;
     let mut proxy_stream = TcpStream::connect(config.proxy_addr()).await?;
-    info!("('{}') Connected to proxy port.", proxy_conn_id);
+    debug!("('{}') Connected to proxy port.", proxy_conn_id);
 
     let notify_cmd = Command::NewProxyConn {
         proxy_conn_id: proxy_conn_id.clone(),
         client_id: config.client_id.clone(),
     };
     write_command(&mut proxy_stream, &notify_cmd).await?;
-    info!(
+    debug!(
         "('{}') Sent new proxy connection notification.",
         proxy_conn_id
     );
