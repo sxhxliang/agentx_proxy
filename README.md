@@ -207,6 +207,7 @@ curl -X POST "http://<服务器IP>:17003/api/sessions?token=a1b2c3d4" \
 - **连接池预热**：代理隧道预先建立，平均响应 < 50ms
 - **零拷贝转发**：Rust 异步 I/O，减少内存拷贝
 - **TCP 优化**：`TCP_NODELAY` + 大缓冲区
+- **自动重连**：客户端断线后自动重连（可配置间隔和开关）
 
 ### 🛡️ 安全隔离
 
@@ -503,6 +504,19 @@ arpc --client-id my-workspace --server-addr <IP> --command-mode
 
 # 访问 URL
 http://<IP>:17003/api/sessions?token=my-workspace
+```
+
+### 自动重连配置
+
+```bash
+# 启用自动重连（默认开启，间隔 5 秒）
+arpc --client-id my-agent --command-mode
+
+# 禁用自动重连
+arpc --client-id my-agent --command-mode --auto-reconnect=false
+
+# 自定义重连间隔（10 秒）
+arpc --client-id my-agent --command-mode --reconnect-interval 10
 ```
 
 ### 调整连接池大小
