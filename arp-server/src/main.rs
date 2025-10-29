@@ -153,17 +153,12 @@ async fn handle_single_client(stream: TcpStream, active_clients: ActiveClients) 
 
     let client_id = if let Command::Register { client_id: id } = read_command(&mut reader).await? {
         info!("Registration attempt for client_id: {}", id);
-        if active_clients.contains_key(&id) {
-            warn!("Client ID {} already registered.", id);
-            let _ = write_command(
-                &mut *writer.lock().await,
-                &Command::RegisterResult {
-                    success: false,
-                    error: Some("Client ID already in use".to_string()),
-                },
-            )
-            .await;
-            return Err(anyhow!("Client ID already registered"));
+
+        // Remove old registration if exists (allow reconnection)
+        if let Some((_, old_info)) = active_clients.remove(&id) {
+            warn!("Client ID {} was already registered, replacing with new connection.", id);
+            // Clear old pool connections
+            while old_info.pool.pop().is_some() {}
         }
 
         active_clients.insert(
@@ -192,7 +187,10 @@ async fn handle_single_client(stream: TcpStream, active_clients: ActiveClients) 
     loop {
         if reader.read_u8().await.is_err() {
             warn!("Client {} disconnected.", client_id);
-            active_clients.remove(&client_id);
+            if let Some((_, old_info)) = active_clients.remove(&client_id) {
+                // Clear pool connections when client disconnects
+                while old_info.pool.pop().is_some() {}
+            }
             break;
         }
     }
@@ -521,17 +519,18 @@ async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_si
                 );
 
                 // Request additional connections to fill the pool
-                let mut writer = client_info.writer.lock().await;
                 for _ in 0..needed {
                     let pool_conn_id = generate_id();
                     let command = Command::RequestNewProxyConn {
                         proxy_conn_id: pool_conn_id.clone(),
                     };
 
+                    let mut writer = client_info.writer.lock().await;
                     if let Err(e) = write_command(&mut *writer, &command).await {
                         error!("Failed to request pool connection for {}: {}", client_id, e);
                         break;
                     }
+                    drop(writer); // Release lock between requests
                 }
             }
         }
