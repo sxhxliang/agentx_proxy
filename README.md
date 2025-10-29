@@ -575,6 +575,21 @@ A:
 - **frp/ngrok**：通用端口转发工具
 - **ARP**：专为 AI 智能体优化，内置会话管理、Claude 集成、连接池等
 
+### Q: 客户端日志在哪里？
+
+A: 日志文件保存在：
+
+| 操作系统    | 日志目录路径                                   |
+|---------|------------------------------------------|
+| Windows | C:\Users\<用户名>\AppData\Local\arpc\logs\  |
+| Linux   | ~/.local/share/arpc/logs/                |
+| macOS   | ~/Library/Application Support/arpc/logs/ |
+
+日志文件名格式为 arpc.log.YYYY-MM-DD，每天自动滚动创建新文件。
+
+如果无法访问系统目录，会回退到当前工作目录下的 ./arpc/logs/。
+
+
 ---
 
 ## 🛣️ 路线图
