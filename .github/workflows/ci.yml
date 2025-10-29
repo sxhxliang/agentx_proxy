@@ -193,7 +193,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: agentx-${{ matrix.target }}
+          name: arp-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
 

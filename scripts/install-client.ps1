@@ -17,7 +17,7 @@ Write-Host ""
 
 # R2 对象存储 URL
 $R2_BASE_URL = "https://s3.agentx.plus"
-$ARCHIVE_NAME = "agentx-${TARGET}.zip"
+$ARCHIVE_NAME = "arp-${TARGET}.zip"
 $DOWNLOAD_URL = "${R2_BASE_URL}/builds/latest/${ARCHIVE_NAME}"
 
 Write-Host "正在从 R2 下载 arpc..."

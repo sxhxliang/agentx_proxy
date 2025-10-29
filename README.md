@@ -9,9 +9,9 @@
 ARP（AI Agent Reverse Proxy）让这一切变得简单：
 
 ```
-☁️ 咖啡厅、机场、酒店...    →    🏢 公司内网的 Claude Code
+☁️ 咖啡厅、机场、酒店...      →    🏢 公司内网的 Claude Code
 📱 手机、平板、笔记本...      →    🏠 家中的 AI 开发环境
-🌍 全球任何网络位置         →    🔒 NAT/防火墙后的智能体
+🌍 全球任何网络位置...        →    🔒 NAT/防火墙后的智能体
 ```
 
 **无需配置路由器、无需 VPN、无需公网 IP** — 只需一个中转服务器。
@@ -26,8 +26,8 @@ ARP（AI Agent Reverse Proxy）让这一切变得简单：
 在咖啡厅用笔记本/手机              公司内网服务器
      💻 📱                            🖥️
      │                                 │
-     │ 打开 console.agentx.plus       │  Claude Code
-     │ 填入服务器地址 + Token          │  (内网 192.168.1.100)
+     │ 打开 console.agentx.plus        │  Claude Code
+     │ 填入服务器地址 + Token           │  (内网 192.168.1.100)
      │                                 │
      └────── Internet ─────►  ☁️  ─────►
              公网访问         ARP服务器

@@ -40,9 +40,9 @@ echo ""
 R2_BASE_URL="https://s3.agentx.plus"
 
 if [[ $TARGET == *"windows"* ]]; then
-  ARCHIVE_NAME="agentx-${TARGET}.zip"
+  ARCHIVE_NAME="arp-${TARGET}.zip"
 else
-  ARCHIVE_NAME="agentx-${TARGET}.tar.gz"
+  ARCHIVE_NAME="arp-${TARGET}.tar.gz"
 fi
 
 DOWNLOAD_URL="${R2_BASE_URL}/builds/latest/${ARCHIVE_NAME}"

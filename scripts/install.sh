@@ -39,7 +39,7 @@ PUBLIC_PORT=${PUBLIC_PORT:-17003}
 
 # R2 对象存储 URL
 R2_BASE_URL="https://s3.agentx.plus"
-ARCHIVE_NAME="agentx-${TARGET}.tar.gz"
+ARCHIVE_NAME="arp-${TARGET}.tar.gz"
 DOWNLOAD_URL="${R2_BASE_URL}/builds/latest/${ARCHIVE_NAME}"
 
 echo "正在从 R2 下载 arps..."
