@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AgentX Proxy is a Rust-based TCP proxy system for exposing local services through a remote server. It consists of two main components:
 
-1. **agents** - The server component that accepts client registrations and routes public connections
-2. **agentc** - The client component that connects to agents and exposes local services
+1. **arps** - The server component that accepts client registrations and routes public connections
+2. **arpc** - The client component that connects to arps and exposes local services
 
 The system uses a connection pooling architecture to minimize latency for incoming requests.
 
@@ -15,9 +15,9 @@ The system uses a connection pooling architecture to minimize latency for incomi
 
 This is a Cargo workspace with three crates:
 
-- `agents/` - Server binary
-- `agentc/` - Client binary with HTTP routing and command execution capabilities
-- `common/` - Shared protocol definitions and utilities
+- `arp-server/` - Server binary
+- `arp-client/` - Client binary with HTTP routing and command execution capabilities
+- `arp-common/` - Shared protocol definitions and utilities
 
 ## Build Commands
 
@@ -29,23 +29,23 @@ cargo build
 cargo build --release
 
 # Build specific crate
-cargo build -p agents
-cargo build -p agentc
+cargo build -p arps
+cargo build -p arpc
 
 # Run tests
 cargo test
 
 # Run with logging
-RUST_LOG=info cargo run -p agents
-RUST_LOG=info cargo run -p agentc
+RUST_LOG=info cargo run -p arps
+RUST_LOG=info cargo run -p arpc
 ```
 
 ## Running the System
 
-### Start the Server (agents)
+### Start the Server (arps)
 
 ```bash
-cargo run -p agents -- \
+cargo run -p arps -- \
   --control-port 17001 \
   --proxy-port 17002 \
   --public-port 17003 \
@@ -57,11 +57,11 @@ The server listens on three ports:
 - **Proxy port (17002)**: Proxy connections from clients
 - **Public port (17003)**: Public-facing connections that are routed to clients
 
-### Start the Client (agentc)
+### Start the Client (arpc)
 
 Basic TCP proxy mode:
 ```bash
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id <UNIQUE_ID> \
   --server-addr 127.0.0.1 \
   --control-port 17001 \
@@ -72,7 +72,7 @@ cargo run -p agentc -- \
 
 Command mode (HTTP routing):
 ```bash
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id <UNIQUE_ID> \
   --command-mode \
   --enable-mcp \
@@ -95,7 +95,7 @@ cargo run -p agentc -- \
 
 The server maintains a connection pool per client (configurable via `--pool-size`). This minimizes latency by having pre-established connections ready. A background task runs every 5 seconds to refill pools that fall below the target size.
 
-### Command Protocol (common/src/lib.rs)
+### Command Protocol (arp-common/src/lib.rs)
 
 Commands are JSON-encoded with a 4-byte big-endian length prefix:
 - `Register { client_id }` - Client registration
@@ -103,23 +103,23 @@ Commands are JSON-encoded with a 4-byte big-endian length prefix:
 - `RequestNewProxyConn { proxy_conn_id }` - Request new proxy connection
 - `NewProxyConn { proxy_conn_id, client_id }` - Notify proxy connection ready
 
-### HTTP Support (common/src/http.rs)
+### HTTP Support (arp-common/src/http.rs)
 
 The `HttpRequest` and `HttpResponse` types provide HTTP/1.1 parsing and response building with automatic CORS header injection. Query parameters are URL-decoded and stored in a HashMap.
 
-### agentc Architecture
+### arpc Architecture
 
-When `--command-mode` is enabled, agentc runs an HTTP router instead of simple TCP proxying:
+When `--command-mode` is enabled, arpc runs an HTTP router instead of simple TCP proxying:
 
-- **Router** (agentc/src/router.rs): Pattern-based HTTP routing with path parameters
-- **Handlers** (agentc/src/handlers/):
+- **Router** (arp-client/src/router.rs): Pattern-based HTTP routing with path parameters
+- **Handlers** (arp-client/src/handlers/):
   - `session` - Command execution session management
   - `proxy` - TCP proxy forwarding
-- **Executor** (agentc/src/executor.rs): Multi-executor support (Claude, Codex, Gemini)
-- **Session Manager** (agentc/src/session.rs): Tracks running command sessions with output buffering
-- **MCP Server** (agentc/src/mcp/): Model Context Protocol server for tool integration
+- **Executor** (arp-client/src/executor.rs): Multi-executor support (Claude, Codex, Gemini)
+- **Session Manager** (arp-client/src/session.rs): Tracks running command sessions with output buffering
+- **MCP Server** (arp-client/src/mcp/): Model Context Protocol server for tool integration
 
-### API Routes (agentc/src/routes.rs)
+### API Routes (arp-client/src/routes.rs)
 
 Session management:
 - `POST /api/sessions` - Create new command execution session
@@ -137,14 +137,14 @@ Claude integration:
 
 ## Client ID Generation
 
-If no client_id is provided, agentc generates a stable machine-specific ID using UUID v5 with entropy from:
+If no client_id is provided, arpc generates a stable machine-specific ID using UUID v5 with entropy from:
 - Hostname
 - Machine ID (`/etc/machine-id` on Linux, `/etc/hostid` on macOS)
 - Username
 - OS and architecture
 - Distribution info (Linux only)
 
-## TCP Optimizations (agents/src/main.rs:102-126)
+## TCP Optimizations (arp-server/src/main.rs:102-126)
 
 The server applies TCP tuning to all sockets:
 - `TCP_NODELAY` enabled for low latency
@@ -159,14 +159,14 @@ When writing tests, use the shared Command protocol for communication. Both TCP 
 
 ### Adding a new route
 
-1. Add handler function in `agentc/src/handlers/`
-2. Register route in `agentc/src/routes.rs` using the router
+1. Add handler function in `arp-client/src/handlers/`
+2. Register route in `arp-client/src/routes.rs` using the router
 3. Handler receives `HandlerContext` with request, stream, and path parameters
 4. Return `HttpResponse` which is sent automatically
 
 ### Adding a new executor
 
-1. Add variant to `ExecutorKind` enum in `agentc/src/executor.rs`
+1. Add variant to `ExecutorKind` enum in `arp-client/src/executor.rs`
 2. Implement `build_<executor>_command()` function
 3. Add to executor options and build_command match
 4. Update storage_dir() to return appropriate config directory

@@ -2,7 +2,7 @@ use clap::Parser;
 use std::{env, fs};
 use uuid::Uuid;
 
-/// Configuration for the agentc client
+/// Configuration for the arpc client
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct ClientConfig {
@@ -10,15 +10,15 @@ pub struct ClientConfig {
     #[arg(short, long, default_value_t = default_client_id())]
     pub client_id: String,
 
-    /// Address of the agents server.
+    /// Address of the arps server.
     #[arg(short, long, default_value = "proxy.agentx.plus")]
     pub server_addr: String,
 
-    /// Port for the agents control connection.
+    /// Port for the arps control connection.
     #[arg(long, default_value_t = 17001)]
     pub control_port: u16,
 
-    /// Port for the agents proxy connection.
+    /// Port for the arps proxy connection.
     #[arg(long, default_value_t = 17002)]
     pub proxy_port: u16,
 

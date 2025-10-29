@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "agents",
-    "agentc",
-    "common",
+    "arp-common",
+    "arp-server",
+    "arp-client",
 ]
 resolver = "2"
 

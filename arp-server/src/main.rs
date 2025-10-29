@@ -25,7 +25,7 @@ struct Args {
     #[arg(long, default_value_t = 17003)]
     public_port: u16,
 
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 3)]
     pool_size: usize,
 }
 
@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     let public_listener = TcpListener::bind(format!("0.0.0.0:{}", args.public_port)).await?;
 
     info!(
-        "agentS listening on ports: Control={}, Proxy={}, Public={}, Pool Size={}",
+        "arps listening on ports: Control={}, Proxy={}, Public={}, Pool Size={}",
         args.control_port, args.proxy_port, args.public_port, args.pool_size
     );
 

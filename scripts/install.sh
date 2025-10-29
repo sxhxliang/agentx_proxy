@@ -42,7 +42,7 @@ R2_BASE_URL="https://s3.agentx.plus"
 ARCHIVE_NAME="agentx-${TARGET}.tar.gz"
 DOWNLOAD_URL="${R2_BASE_URL}/builds/latest/${ARCHIVE_NAME}"
 
-echo "正在从 R2 下载 agents..."
+echo "正在从 R2 下载 arps..."
 echo "URL: $DOWNLOAD_URL"
 
 # 下载并解压
@@ -59,27 +59,27 @@ echo "✅ 下载完成"
 
 tar xzf "$ARCHIVE_NAME"
 
-if [ ! -f "agents" ]; then
-    echo "❌ 解压后未找到 agents 二进制文件"
+if [ ! -f "arps" ]; then
+    echo "❌ 解压后未找到 arps 二进制文件"
     rm -rf "$TEMP_DIR"
     exit 1
 fi
 
-chmod +x agents
-sudo mv agents /usr/local/bin/agents
+chmod +x arps
+sudo mv arps /usr/local/bin/arps
 cd -
 rm -rf "$TEMP_DIR"
 
-echo "✅ agents 已安装到 /usr/local/bin/agents"
+echo "✅ arps 已安装到 /usr/local/bin/arps"
 
-sudo tee /etc/systemd/system/agents.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/arps.service > /dev/null <<EOF
 [Unit]
-Description=agentS Server
+Description=arps Server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agents --control-port $CONTROL_PORT --proxy-port $PROXY_PORT --public-port $PUBLIC_PORT
+ExecStart=/usr/local/bin/arps --control-port $CONTROL_PORT --proxy-port $PROXY_PORT --public-port $PUBLIC_PORT
 Restart=always
 RestartSec=5
 
@@ -88,7 +88,7 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable agents
-sudo systemctl start agents
-echo "agentS installed and started successfully"
+sudo systemctl enable arps
+sudo systemctl start arps
+echo "arps installed and started successfully"
 echo "Control: $CONTROL_PORT, Proxy: $PROXY_PORT, Public: $PUBLIC_PORT"

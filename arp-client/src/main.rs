@@ -31,8 +31,8 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Invalid configuration: {}", e));
     }
 
-    info!("Starting agentc with client_id: {}", config.client_id);
-    info!("Starting agentc...");
+    info!("Starting arpc with client_id: {}", config.client_id);
+    info!("Starting arpc...");
     debug!("Server address: {}", config.control_addr());
     if config.command_mode {
         info!("Running in command mode.");

@@ -6,16 +6,16 @@ pub mod http;
 /// Commands exchanged between client and server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Command {
-    /// Register a new client. Sent from agentc to agents.
+    /// Register a new client. Sent from arpc to arps.
     Register { client_id: String },
-    /// Result of the registration. Sent from agents to agentc.
+    /// Result of the registration. Sent from arps to arpc.
     RegisterResult {
         success: bool,
         error: Option<String>,
     },
-    /// Request a new proxy connection. Sent from agents to a chosen agentc.
+    /// Request a new proxy connection. Sent from arps to a chosen arpc.
     RequestNewProxyConn { proxy_conn_id: String },
-    /// Notify the proxy listener that a new client is ready. Sent from agentc to agents.
+    /// Notify the proxy listener that a new client is ready. Sent from arpc to arps.
     NewProxyConn {
         proxy_conn_id: String,
         client_id: String,

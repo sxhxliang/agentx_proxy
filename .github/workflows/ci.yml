@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "master", "mcp" ]
+    branches: [ "main", "master"]
   pull_request:
-    branches: [ "main", "master", "mcp" ]
+    branches: [ "main", "master"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -141,11 +141,11 @@ jobs:
       - name: Build for ${{ matrix.target }}
         run: |
           if [ "${{ matrix.client_only }}" = "true" ]; then
-            echo "Building client only (agentc) for ${{ matrix.target }}..."
+            echo "Building client only (arpc) for ${{ matrix.target }}..."
             if [ "${{ matrix.use_cross }}" = "true" ]; then
-              cross build --release --target ${{ matrix.target }} -p agentc
+              cross build --release --target ${{ matrix.target }} -p arpc
             else
-              cargo build --release --target ${{ matrix.target }} -p agentc
+              cargo build --release --target ${{ matrix.target }} -p arpc
             fi
           else
             echo "Building all workspace members for ${{ matrix.target }}..."
@@ -158,15 +158,15 @@ jobs:
 
           # Verify build output
           echo "Build completed. Checking output files..."
-          ls -lh target/${{ matrix.target }}/release/ | grep -E "(agents|agentc)" || true
+          ls -lh target/${{ matrix.target }}/release/ | grep -E "(arps|arpc)" || true
         shell: bash
 
       - name: Prepare artifacts (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p artifacts
-          cp target/${{ matrix.target }}/release/agents artifacts/ || true
-          cp target/${{ matrix.target }}/release/agentc artifacts/
+          cp target/${{ matrix.target }}/release/arps artifacts/ || true
+          cp target/${{ matrix.target }}/release/arpc artifacts/
           chmod +x artifacts/*
         shell: bash
 
@@ -178,11 +178,11 @@ jobs:
 
           if not exist "artifacts" mkdir artifacts
 
-          if exist "target\${{ matrix.target }}\release\agentc.exe" (
-            echo "Copying agentc.exe..."
-            copy target\${{ matrix.target }}\release\agentc.exe artifacts\
+          if exist "target\${{ matrix.target }}\release\arpc.exe" (
+            echo "Copying arpc.exe..."
+            copy target\${{ matrix.target }}\release\arpc.exe artifacts\
           ) else (
-            echo "ERROR: agentc.exe not found!"
+            echo "ERROR: arpc.exe not found!"
             exit /b 1
           )
 

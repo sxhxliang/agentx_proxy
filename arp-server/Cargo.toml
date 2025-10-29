@@ -1,11 +1,11 @@
 
 [package]
-name = "agents"
+name = "arps"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-common = { path = "../common" }
+common = { path = "../arp-common" }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

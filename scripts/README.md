@@ -247,8 +247,8 @@ POOL_SIZE=10 TEST_DURATION=60 CONCURRENT_USERS=20 ./scripts/benchmark.sh
 
 **日志文件位置**:
 ```
-/tmp/agents.log              # 服务器日志
-/tmp/agentc_<client_id>.log  # 客户端日志
+/tmp/arps.log              # 服务器日志
+/tmp/arpc_<client_id>.log  # 客户端日志
 /tmp/test_server_<port>.log  # 测试服务日志
 /tmp/benchmark_*.json        # 性能测试结果
 ```
@@ -299,7 +299,7 @@ POOL_SIZE=10
 ```
 
 ### TCP 缓冲区
-编辑 `agents/src/main.rs`:
+编辑 `arp-server/src/main.rs`:
 ```rust
 // 增大缓冲区 (默认 256KB)
 setsockopt(socket.as_socket(), socket2::Socket::SO_RCVBUF, &(512 * 1024))?;
@@ -349,8 +349,8 @@ cargo --version
 RUST_LOG=debug ./scripts/quick_demo.sh
 
 # 查看日志
-tail -f /tmp/agentc_*.log
-tail -f /tmp/agents.log
+tail -f /tmp/arpc_*.log
+tail -f /tmp/arps.log
 ```
 
 #### 4. 测试服务启动失败
@@ -377,12 +377,12 @@ bash scripts/quick_demo.sh
 ### 日志调试
 ```bash
 # 查看所有日志
-tail -f /tmp/agents.log
-tail -f /tmp/agentc_*.log
+tail -f /tmp/arps.log
+tail -f /tmp/arpc_*.log
 
 # 查看最近的错误
-grep -i error /tmp/agents.log
-grep -i error /tmp/agentc_*.log
+grep -i error /tmp/arps.log
+grep -i error /tmp/arpc_*.log
 
 # 性能问题诊断
 # 检查 CPU 和内存使用
@@ -418,7 +418,7 @@ EOF
 python3 /tmp/my_service.py &
 
 # 使用 AgentX 暴露
-cargo run -p agentc -- \
+cargo run -p arpc -- \
     --client-id my-service \
     --local-port 9000 \
     # ... 其他参数
@@ -430,7 +430,7 @@ cargo run -p agentc -- \
 # my_custom_test.sh
 
 # 启动服务器
-cargo run -p agents -- --pool-size 5 &
+cargo run -p arps -- --pool-size 5 &
 
 # 等待启动
 sleep 3
@@ -439,7 +439,7 @@ sleep 3
 python3 -m http.server 9000 &
 
 # 启动客户端
-cargo run -p agentc -- \
+cargo run -p arpc -- \
     --client-id custom-test \
     --local-port 9000 &
 

@@ -141,7 +141,7 @@ agentx_cleanup
 └─ 开发调试
    ├─ 查看配置 -> source scripts/config.env; agentx_show_config
    ├─ 检查环境 -> make check
-   ├─ 查看日志 -> tail -f /tmp/agents.log
+   ├─ 查看日志 -> tail -f /tmp/arps.log
    └─ 清理环境 -> make clean
 ```
 
@@ -196,8 +196,8 @@ make benchmark
 
 ```
 /tmp/
-├── agents_*.log              # 服务器日志
-├── agentc_*.log              # 客户端日志
+├── arps_*.log              # 服务器日志
+├── arpc_*.log              # 客户端日志
 ├── test_server_*.log         # 测试服务日志
 ├── demo_*.log                # 演示日志
 ├── benchmark_*.json          # 性能测试结果
@@ -217,7 +217,7 @@ make clean
 A: 启用详细日志：
 ```bash
 RUST_LOG=debug make quick
-tail -f /tmp/agentc_*.log
+tail -f /tmp/arpc_*.log
 ```
 
 ### Q: 性能测试结果在哪里？

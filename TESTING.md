@@ -306,7 +306,7 @@ source scripts/config.env
 agentx_start_test_service 9000 "MyService"
 
 # 使用AgentX暴露
-cargo run -p agentc -- \
+cargo run -p arpc -- \
     --client-id my-service \
     --local-port 9000
 
@@ -340,8 +340,8 @@ fi
 
 ```
 /tmp/
-├── agents_*.log              # 服务器日志
-├── agentc_*.log              # 客户端日志
+├── arps_*.log              # 服务器日志
+├── arpc_*.log              # 客户端日志
 ├── test_server_*.log         # 测试服务日志
 ├── demo_*.log                # 演示日志
 ├── benchmark_*.json          # 性能测试结果
@@ -353,10 +353,10 @@ fi
 
 ```bash
 # 实时查看日志
-tail -f /tmp/agents.log
+tail -f /tmp/arps.log
 
 # 查看特定客户端日志
-tail -f /tmp/agentc_client-id.log
+tail -f /tmp/arpc_client-id.log
 
 # 查看性能测试结果
 cat /tmp/agentx_benchmark_*.json
@@ -408,8 +408,8 @@ make check
 RUST_LOG=debug make quick
 
 # 查看详细日志
-cat /tmp/agentc_*.log
-cat /tmp/agents.log
+cat /tmp/arpc_*.log
+cat /tmp/arps.log
 
 # 清理后重试
 make clean

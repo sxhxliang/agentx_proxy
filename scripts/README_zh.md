@@ -28,14 +28,14 @@ AgentX Proxy 是一个基于 Rust 的高性能 TCP 代理系统，通过远程�
 **解决方案**:
 ```bash
 # 1. 启动 AgentX Server（公网服务器）
-cargo run -p agents -- \
+cargo run -p arps -- \
   --control-port 17001 \
   --proxy-port 17002 \
   --public-port 17003 \
   --pool-size 5  # 设置较大的连接池以支持多用户访问
 
 # 2. 启动 AgentX Client（本地开发机）
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id my-dev-app \
   --server-addr your-server.com \
   --control-port 17001 \
@@ -56,7 +56,7 @@ cargo run -p agentc -- \
 **解决方案**:
 ```bash
 # 1. 启动 AgentX Client（本地开发机）
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id my-programming-env \
   --server-addr your-server.com \
   --command-mode \
@@ -82,7 +82,7 @@ curl -X POST http://your-server.com:17003/?token=my-programming-env/sessions \
 **解决方案**:
 ```bash
 # 启动共享开发环境
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id shared-dev-env \
   --server-addr shared-server.com \
   --command-mode \
@@ -100,7 +100,7 @@ cargo run -p agentc -- \
 **解决方案**:
 ```bash
 # 暴露内网 PostgreSQL 数据库
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id postgres-db \
   --server-addr your-vps.com \
   --control-port 17001 \
@@ -119,14 +119,14 @@ psql -h your-vps.com -p 17003 -d mydb "?token=postgres-db"
 **解决方案**:
 ```bash
 # 启动演示环境
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id demo-app-$(date +%s) \
   --server-addr demo-server.com \
   --local-addr 127.0.0.1 \
   --local-port 8080
 
 # 生成分享链接
-echo "演示地址：http://demo-server.com:17003/?token=$(grep client-id ~/.agentc/config)"
+echo "演示地址：http://demo-server.com:17003/?token=$(grep client-id ~/.arp-client/config)"
 ```
 
 ## 📦 安装与构建
@@ -150,8 +150,8 @@ cargo build
 cargo build --release
 
 # 构建特定组件
-cargo build -p agents
-cargo build -p agentc
+cargo build -p arps
+cargo build -p arpc
 
 # 运行测试
 cargo test
@@ -159,12 +159,12 @@ cargo test
 
 ## 🎯 快速开始
 
-### 第一步：启动服务器（agents）
+### 第一步：启动服务器（arps）
 
 在公网服务器上运行：
 
 ```bash
-cargo run -p agents -- \
+cargo run -p arps -- \
   --control-port 17001 \
   --proxy-port 17002 \
   --public-port 17003 \
@@ -176,12 +176,12 @@ cargo run -p agents -- \
 - **代理端口 (17002)**: 客户端代理连接
 - **公网端口 (17003)**: 公网访问入口
 
-### 第二步：启动客户端（agentc）
+### 第二步：启动客户端（arpc）
 
 #### 模式一：TCP 代理模式（转发本地服务）
 
 ```bash
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id my-service \
   --server-addr 127.0.0.1 \
   --control-port 17001 \
@@ -195,7 +195,7 @@ cargo run -p agentc -- \
 #### 模式二：命令模式（HTTP 路由）
 
 ```bash
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id my-service \
   --command-mode \
   --enable-mcp \
@@ -215,14 +215,14 @@ http://服务器IP:17003/?token=my-service
 
 系统由三个核心组件构成：
 
-### 1. **agents** - 服务器组件
+### 1. **arps** - 服务器组件
 负责客户端注册和公网连接路由，运行三个端口：
 - **控制端口**: 客户端注册和控制命令
 - **代理端口**: 客户端代理连接
 - **公网端口**: 公网访问入口
 
-### 2. **agentc** - 客户端组件
-连接 agents 并暴露本地服务，支持两种模式：
+### 2. **arpc** - 客户端组件
+连接 arps 并暴露本地服务，支持两种模式：
 - **TCP 代理模式**: 透明 TCP 转发
 - **命令模式**: HTTP 路由和命令执行 API
 
@@ -273,7 +273,7 @@ http://服务器IP:17003/?token=my-service
 
 ## 🔧 配置选项
 
-### 服务器（agents）选项
+### 服务器（arps）选项
 
 | 选项 | 描述 | 默认值 |
 |------|------|--------|
@@ -282,7 +282,7 @@ http://服务器IP:17003/?token=my-service
 | `--public-port` | 公网访问端口 | 17003 |
 | `--pool-size` | 每客户端连接池大小 | 1 |
 
-### 客户端（agentc）选项
+### 客户端（arpc）选项
 
 | 选项 | 描述 | 默认值 |
 |------|------|--------|
@@ -300,10 +300,10 @@ http://服务器IP:17003/?token=my-service
 
 ```bash
 # 启用调试日志
-RUST_LOG=debug cargo run -p agents
+RUST_LOG=debug cargo run -p arps
 
 # 信息级别日志
-RUST_LOG=info cargo run -p agentc
+RUST_LOG=info cargo run -p arpc
 ```
 
 ## 🔌 TCP 性能优化
@@ -320,9 +320,9 @@ RUST_LOG=info cargo run -p agentc
 
 ```
 agentx_proxy/
-├── agents/                    # 服务器组件
+├── arp-server/                    # 服务器组件
 │   └── src/main.rs           # 主服务器逻辑
-├── agentc/                   # 客户端组件
+├── arp-client/                   # 客户端组件
 │   ├── src/
 │   │   ├── main.rs           # 客户端入口
 │   │   ├── config.rs         # 配置管理
@@ -334,7 +334,7 @@ agentx_proxy/
 │   │   ├── mcp/              # MCP 服务器集成
 │   │   └── claude.rs         # Claude 集成
 │   └── Cargo.toml
-├── common/                   # 共享协议和工具
+├── arp-common/                   # 共享协议和工具
 │   ├── src/
 │   │   ├── lib.rs            # 协议定义
 │   │   └── http.rs           # HTTP 解析工具
@@ -351,10 +351,10 @@ agentx_proxy/
 测试流程示例：
 ```bash
 # 启动服务器
-cargo run -p agents -- --pool-size 1
+cargo run -p arps -- --pool-size 1
 
 # 启动客户端
-cargo run -p agentc -- --client-id test --local-port 3000
+cargo run -p arpc -- --client-id test --local-port 3000
 
 # 测试连接
 curl http://localhost:17003/?token=test
@@ -366,14 +366,14 @@ curl http://localhost:17003/?token=test
 
 ### 添加新路由
 
-1. 在 `agentc/src/handlers/` 中添加处理器函数
-2. 在 `agentc/src/routes.rs` 中使用路由器注册路由
+1. 在 `arp-client/src/handlers/` 中添加处理器函数
+2. 在 `arp-client/src/routes.rs` 中使用路由器注册路由
 3. 处理器接收包含请求、流和路径参数的 `HandlerContext`
 4. 返回自动发送的 `HttpResponse`
 
 ### 添加新执行器
 
-1. 在 `agentc/src/executor.rs` 的 `ExecutorKind` 枚举中添加变体
+1. 在 `arp-client/src/executor.rs` 的 `ExecutorKind` 枚举中添加变体
 2. 实现 `build_<executor>_command()` 函数
 3. 添加到执行器选项和 build_command 匹配
 4. 更新 `storage_dir()` 返回适当的配置目录
@@ -490,7 +490,7 @@ cargo outdated
 
 ## 📌 客户端 ID 生成
 
-如果没有提供 client_id，agentc 会使用 UUID v5 基于机器特征生成稳定的机器特定 ID，熵来源包括：
+如果没有提供 client_id，arpc 会使用 UUID v5 基于机器特征生成稳定的机器特定 ID，熵来源包括：
 - 主机名
 - 机器 ID（Linux 上为 `/etc/machine-id`，macOS 上为 `/etc/hostid`）
 - 用户名
@@ -503,13 +503,13 @@ cargo outdated
 
 ```bash
 # 前端开发服务器（React/Vue）
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id frontend-dev \
   --server-addr your-server.com \
   --local-port 5173  # Vite 默认端口
 
 # 后端 API 服务
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id backend-api \
   --server-addr your-server.com \
   --local-port 8000
@@ -523,7 +523,7 @@ echo "后端：http://your-server.com:17003/?token=backend-api"
 
 ```bash
 # 暴露本地 MySQL
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id mysql-db \
   --server-addr your-server.com \
   --local-port 3306
@@ -536,7 +536,7 @@ mysql -h your-server.com -P 17003 -u root -p "?token=mysql-db"
 
 ```bash
 # 暴露测试服务器
-cargo run -p agentc -- \
+cargo run -p arpc -- \
   --client-id ci-test \
   --server-addr ci-server.com \
   --local-port 8080

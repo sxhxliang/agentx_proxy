@@ -40,9 +40,9 @@ RESULTS_FILE="/tmp/agentx_benchmark_$(date +%s).json"
 # 清理函数
 cleanup() {
     log "清理进程..."
-    pkill -f "cargo run -p agents" 2>/dev/null || true
+    pkill -f "cargo run -p arps" 2>/dev/null || true
     pkill -f "python3 -m http.server" 2>/dev/null || true
-    pkill -f "agentc" 2>/dev/null || true
+    pkill -f "arpc" 2>/dev/null || true
     sleep 2
 }
 
@@ -50,12 +50,12 @@ cleanup() {
 start_server() {
     log "启动 AgentX 服务器 (连接池大小: $POOL_SIZE)..."
 
-    cargo run -p agents -- \
+    cargo run -p arps -- \
         --control-port $CONTROL_PORT \
         --proxy-port $PROXY_PORT \
         --public-port $PUBLIC_PORT \
         --pool-size $POOL_SIZE \
-        > /tmp/agents_benchmark.log 2>&1 &
+        > /tmp/arps_benchmark.log 2>&1 &
 
     AGENT_PID=$!
     echo $AGENT_PID > /tmp/agent_pid
@@ -123,16 +123,16 @@ start_clients() {
     for i in $(seq 1 $num_clients); do
         local client_id="benchmark-client-$i"
 
-        cargo run -p agentc -- \
+        cargo run -p arpc -- \
             --client-id $client_id \
             --server-addr 127.0.0.1 \
             --control-port $CONTROL_PORT \
             --proxy-port $PROXY_PORT \
             --local-addr 127.0.0.1 \
             --local-port 9000 \
-            > /tmp/agentc_$i.log 2>&1 &
+            > /tmp/arpc_$i.log 2>&1 &
 
-        echo $! > /tmp/agentc_$i.pid
+        echo $! > /tmp/arpc_$i.pid
     done
 
     sleep 5
@@ -211,25 +211,25 @@ test_connection_pool() {
 
     # 测试连接池为空时的性能
     log "测试 1: 无预热连接池..."
-    cargo run -p agents -- \
+    cargo run -p arps -- \
         --control-port 17011 \
         --proxy-port 17012 \
         --public-port 17013 \
         --pool-size 0 \
-        > /tmp/agents_cold.log 2>&1 &
+        > /tmp/arps_cold.log 2>&1 &
 
     COLD_PID=$!
     sleep 3
 
     # 启动客户端
-    cargo run -p agentc -- \
+    cargo run -p arpc -- \
         --client-id cold-pool-test \
         --server-addr 127.0.0.1 \
         --control-port 17011 \
         --proxy-port 17012 \
         --local-addr 127.0.0.1 \
         --local-port 9000 \
-        > /tmp/agentc_cold.log 2>&1 &
+        > /tmp/arpc_cold.log 2>&1 &
 
     sleep 5
 
@@ -239,32 +239,32 @@ test_connection_pool() {
     local cold_time=$((end_time - start_time))
 
     kill $COLD_PID 2>/dev/null || true
-    pkill -f "agentc" 2>/dev/null || true
+    pkill -f "arpc" 2>/dev/null || true
     sleep 2
 
     log "冷启动延迟: ${cold_time}ms"
 
     # 测试预热连接池
     log "测试 2: 预热连接池..."
-    cargo run -p agents -- \
+    cargo run -p arps -- \
         --control-port 17011 \
         --proxy-port 17012 \
         --public-port 17013 \
         --pool-size 5 \
-        > /tmp/agents_warm.log 2>&1 &
+        > /tmp/arps_warm.log 2>&1 &
 
     WARM_PID=$!
     sleep 3
 
     # 启动客户端
-    cargo run -p agentc -- \
+    cargo run -p arpc -- \
         --client-id warm-pool-test \
         --server-addr 127.0.0.1 \
         --control-port 17011 \
         --proxy-port 17012 \
         --local-addr 127.0.0.1 \
         --local-port 9000 \
-        > /tmp/agentc_warm.log 2>&1 &
+        > /tmp/arpc_warm.log 2>&1 &
 
     sleep 8  # 等待连接池建立
 
@@ -274,7 +274,7 @@ test_connection_pool() {
     local warm_time=$((end_time - start_time))
 
     kill $WARM_PID 2>/dev/null || true
-    pkill -f "agentc" 2>/dev/null || true
+    pkill -f "arpc" 2>/dev/null || true
 
     log "预热启动延迟: ${warm_time}ms"
 
