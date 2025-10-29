@@ -85,57 +85,60 @@ async fn main() -> Result<()> {
     // Build router and wrap in Arc to avoid repeated cloning
     let router = Arc::new(routes::build_router(state));
 
+    loop {
+        match run_client_loop(config_arc.clone(), router.clone()).await {
+            Ok(_) => break,
+            Err(e) if config_arc.auto_reconnect => {
+                error!("Connection error: {}. Reconnecting in {}s...", e, config_arc.reconnect_interval);
+                tokio::time::sleep(tokio::time::Duration::from_secs(config_arc.reconnect_interval)).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_client_loop(config: Arc<ClientConfig>, router: Arc<Router>) -> Result<()> {
     let control_stream = TcpStream::connect(config.control_addr()).await?;
     info!("Connected to control port.");
 
     let (mut reader, mut writer) = tokio::io::split(control_stream);
 
-    // Register the client
     let register_cmd = Command::Register {
         client_id: config.client_id.clone(),
     };
     write_command(&mut writer, &register_cmd).await?;
+    debug!("Sent registration command");
 
-    // Wait for registration result
-    match read_command(&mut reader).await? {
-        Command::RegisterResult { success, error } => {
-            if success {
-                info!("Successfully registered with the server.");
-            } else {
-                error!("Registration failed: {}", error.unwrap_or_default());
-                return Err(anyhow!("Registration failed"));
-            }
+    match tokio::time::timeout(tokio::time::Duration::from_secs(10), read_command(&mut reader)).await? {
+        Ok(Command::RegisterResult { success, error }) if success => {
+            info!("Successfully registered with the server.");
         }
-        _ => {
-            return Err(anyhow!(
-                "Received unexpected command after registration attempt."
-            ));
+        Ok(Command::RegisterResult { error, .. }) => {
+            return Err(anyhow!("Registration failed: {}", error.unwrap_or_default()));
         }
+        Ok(cmd) => return Err(anyhow!("Unexpected command: {:?}", cmd)),
+        Err(e) => return Err(e),
     }
+
     if config.server_addr != "proxy.agentx.plus" {
-        info!(
-            "🌐 Public URL: {}:17003?token={}",
-            config.server_addr, config.client_id
-        );
+        info!("🌐 Public URL: {}:17003?token={}", config.server_addr, config.client_id);
     } else {
-        info!(
-            "🌐 Public URL: https://console.agentx.plus/?token={}",
-            config.client_id
-        );
+        info!("🌐 Public URL: https://console.agentx.plus/?token={}", config.client_id);
     }
-    // Main loop to listen for commands from the server
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 info!("Received Ctrl+C signal. Shutting down gracefully...");
-                break;
+                return Ok(());
             }
             result = read_command(&mut reader) => {
                 match result {
                     Ok(Command::RequestNewProxyConn { proxy_conn_id }) => {
                         debug!("Received request for new proxy connection: {}", proxy_conn_id);
-                        // Use Arc::clone for efficient reference counting instead of deep cloning
-                        let config_ref = Arc::clone(&config_arc);
+                        let config_ref = Arc::clone(&config);
                         let router_ref = Arc::clone(&router);
                         tokio::spawn(async move {
                             if let Err(e) = create_proxy_connection(config_ref, router_ref, proxy_conn_id).await {
@@ -143,23 +146,15 @@ async fn main() -> Result<()> {
                             }
                         });
                     }
-                    Ok(cmd) => {
-                        warn!("Received unexpected command: {:?}", cmd);
-                    }
+                    Ok(cmd) => warn!("Received unexpected command: {:?}", cmd),
                     Err(ref e) if e.downcast_ref::<io::Error>().is_some_and(|io_err| io_err.kind() == io::ErrorKind::UnexpectedEof) => {
-                        error!("Control connection closed by server. Shutting down.");
-                        break;
+                        return Err(anyhow!("Control connection closed by server"));
                     }
-                    Err(e) => {
-                        error!("Error reading from control connection: {}. Shutting down.", e);
-                        break;
-                    }
+                    Err(e) => return Err(anyhow!("Error reading from control connection: {}", e)),
                 }
             }
         }
     }
-
-    Ok(())
 }
 
 async fn create_proxy_connection(

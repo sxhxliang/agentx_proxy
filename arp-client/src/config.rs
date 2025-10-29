@@ -49,6 +49,14 @@ pub struct ClientConfig {
     /// Port for the MCP server
     #[arg(long, default_value_t = 9021)]
     pub mcp_port: u16,
+
+    /// Enable auto-reconnect when connection is lost
+    #[arg(long, default_value_t = true)]
+    pub auto_reconnect: bool,
+
+    /// Reconnect interval in seconds
+    #[arg(long, default_value_t = 5)]
+    pub reconnect_interval: u64,
 }
 
 fn default_client_id() -> String {
