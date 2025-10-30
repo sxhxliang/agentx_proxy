@@ -7,10 +7,10 @@ mod router;
 mod routes;
 mod session;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use common::http;
-use common::{read_command, write_command, Command};
+use common::{Command, read_command, write_command};
 use config::ClientConfig;
 use handlers::HandlerState;
 use router::{HandlerContext, Router};
@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -2,7 +2,7 @@ use crate::handlers::HandlerState;
 use crate::router::HandlerContext;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use common::http::{json_error, HttpResponse};
+use common::http::{HttpResponse, json_error};
 use serde_json::json;
 use std::borrow::Cow;
 use std::io::ErrorKind;
@@ -279,10 +279,10 @@ fn resolve_path(base: &Path, relative: &str) -> Result<PathBuf, String> {
             Component::Normal(part) => resolved.push(part),
             Component::CurDir => {}
             Component::ParentDir => {
-                return Err("Path traversal outside the project directory is not allowed".into())
+                return Err("Path traversal outside the project directory is not allowed".into());
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err("Absolute paths are not allowed".into())
+                return Err("Absolute paths are not allowed".into());
             }
         }
     }

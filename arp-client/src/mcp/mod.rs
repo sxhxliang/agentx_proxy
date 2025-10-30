@@ -7,7 +7,7 @@ use hyper_util::{
     service::TowerToHyperService,
 };
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpService,
+    StreamableHttpService, session::local::LocalSessionManager,
 };
 
 /// Start the MCP server on the specified port

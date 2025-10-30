@@ -1,16 +1,16 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use common::http::{HttpRequest, HttpResponse};
-use common::{join_streams, read_command, write_command, Command};
+use common::{Command, join_streams, read_command, write_command};
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
-use tracing::{error, info, warn, Level};
+use tokio::time::{Duration, interval};
+use tracing::{Level, error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

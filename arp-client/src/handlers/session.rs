@@ -1,14 +1,14 @@
 use crate::agentx::{claude, codex, gemini};
 use crate::executor::{
-    build_command, parse_bool_str, ClaudeOptions, CodexOptions, ExecutorKind, ExecutorOptions,
-    GeminiOptions,
+    ClaudeOptions, CodexOptions, ExecutorKind, ExecutorOptions, GeminiOptions, build_command,
+    parse_bool_str,
 };
 use crate::handlers::HandlerState;
 use crate::router::HandlerContext;
 use crate::session::{CommandSession, SessionStatus};
-use anyhow::{anyhow, Result};
-use common::http::{json_error, HttpResponse};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow};
+use common::http::{HttpResponse, json_error};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -439,7 +439,7 @@ fn parse_executor_options(
                     return (
                         None,
                         Some("resume_last must be a boolean, string, or number".to_string()),
-                    )
+                    );
                 }
             };
 

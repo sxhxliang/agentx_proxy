@@ -1,7 +1,7 @@
 use crate::agentx::types::{Project, Session, WorkingDirectory};
 use crate::router::RouterBuilder;
 use common::http;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::future::Future;
 
 pub fn register_project_routes<ListProjectsFn, ListProjectsFut, WorkingDirsFn, WorkingDirsFut>(
