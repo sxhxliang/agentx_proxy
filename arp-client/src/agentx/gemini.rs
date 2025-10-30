@@ -1,45 +1,12 @@
+pub use crate::agentx::types::{Project, Session, WorkingDirectory};
+use crate::agentx::utils::metadata_timestamp;
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Project {
-    pub id: String,
-    pub path: String,
-    pub sessions: Vec<String>,
-    pub created_at: u64,
-    pub most_recent_session: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    pub id: String,
-    pub project_id: String,
-    pub project_path: String,
-    pub todo_data: Option<Value>,
-    pub created_at: u64,
-    pub first_message: Option<String>,
-    pub message_timestamp: Option<String>,
-    pub message_count: usize,
-    pub status: String,
-    pub total_duration: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkingDirectory {
-    pub path: String,
-    #[serde(rename = "shortname")]
-    pub short_name: String,
-    #[serde(rename = "lastDate")]
-    pub last_date: String,
-    #[serde(rename = "conversationCount")]
-    pub conversation_count: usize,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 struct GeminiSessionFile {
@@ -115,16 +82,6 @@ fn is_project_dir(entry: &fs::DirEntry) -> bool {
         return false;
     };
     name.len() == 64 && name.chars().all(|c| c.is_ascii_hexdigit())
-}
-
-fn timestamp_from_metadata(metadata: &fs::Metadata) -> u64 {
-    metadata
-        .created()
-        .or_else(|_| metadata.modified())
-        .unwrap_or(SystemTime::UNIX_EPOCH)
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 fn parse_timestamp(value: &Option<String>) -> Option<DateTime<Utc>> {
@@ -269,7 +226,7 @@ fn collect_sessions(project_dir: &Path) -> Vec<GeminiSessionSummary> {
             }
 
             let metadata = fs::metadata(&path).ok()?;
-            let created_at = timestamp_from_metadata(&metadata);
+            let created_at = metadata_timestamp(&metadata);
 
             let (session_file, value) = parse_session_file(&path)?;
             let session_id = session_file.session_id.clone()?;
@@ -361,7 +318,7 @@ fn load_project_data(dir: &Path) -> Option<GeminiProjectData> {
         .iter()
         .map(|s| s.created_at)
         .min()
-        .or_else(|| dir_metadata.as_ref().map(timestamp_from_metadata))
+        .or_else(|| dir_metadata.as_ref().map(metadata_timestamp))
         .unwrap_or(0);
 
     let most_recent_session = sessions
