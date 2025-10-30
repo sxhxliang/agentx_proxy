@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -371,7 +371,10 @@ pub async fn load_session_by_id(session_id: String) -> Result<Vec<serde_json::Va
         }
     }
 
-    Err(format!("Session file not found for session ID: {}", clean_id))
+    Err(format!(
+        "Session file not found for session ID: {}",
+        clean_id
+    ))
 }
 
 pub async fn delete_session_by_id(session_id: String) -> Result<(), String> {
@@ -395,7 +398,10 @@ pub async fn delete_session_by_id(session_id: String) -> Result<(), String> {
         }
     }
 
-    Err(format!("Session file not found for session ID: {}", clean_id))
+    Err(format!(
+        "Session file not found for session ID: {}",
+        clean_id
+    ))
 }
 
 pub async fn get_all_sessions(

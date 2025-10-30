@@ -167,7 +167,10 @@ async fn handle_single_client(stream: TcpStream, active_clients: ActiveClients) 
 
         // Remove old registration if exists (allow reconnection)
         if let Some((_, old_info)) = active_clients.remove(&id) {
-            warn!("Client ID {} was already registered, replacing with new connection.", id);
+            warn!(
+                "Client ID {} was already registered, replacing with new connection.",
+                id
+            );
             // Clear old pool connections
             while old_info.pool.pop().is_some() {}
         }
@@ -406,7 +409,6 @@ async fn route_public_connection(
 
     // Phase 2: Try to get connection from pool first (fast path)
     if let Some(mut proxy_stream) = client_info.pool.pop() {
-
         // If we parsed HTTP, we need to reconstruct and send the request
         if let Some(request) = http_request {
             // Write reconstructed HTTP request to proxy stream
@@ -480,12 +482,19 @@ async fn cleanup_expired_connections(pending_connections: PendingConnectionsMap)
 }
 
 // Background task to maintain connection pools for all clients
-async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_size: usize, prewarm: bool) {
+async fn maintain_connection_pools(
+    active_clients: ActiveClients,
+    target_pool_size: usize,
+    prewarm: bool,
+) {
     // Prewarm pools immediately on first run
     if prewarm {
         for entry in active_clients.iter() {
             let (client_id, client_info) = entry.pair();
-            info!("Prewarming pool for client {} with {} connections", client_id, target_pool_size);
+            info!(
+                "Prewarming pool for client {} with {} connections",
+                client_id, target_pool_size
+            );
 
             for _ in 0..target_pool_size {
                 let pool_conn_id = generate_id();
@@ -519,7 +528,10 @@ async fn maintain_connection_pools(active_clients: ActiveClients, target_pool_si
                     };
 
                     if client_info.cmd_tx.send(command).is_err() {
-                        error!("Failed to request pool connection for {}: channel closed", client_id);
+                        error!(
+                            "Failed to request pool connection for {}: channel closed",
+                            client_id
+                        );
                         break;
                     }
                 }

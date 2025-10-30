@@ -89,8 +89,14 @@ async fn main() -> Result<()> {
         match run_client_loop(config_arc.clone(), router.clone()).await {
             Ok(_) => break,
             Err(e) if config_arc.auto_reconnect => {
-                error!("Connection error: {}. Reconnecting in {}s...", e, config_arc.reconnect_interval);
-                tokio::time::sleep(tokio::time::Duration::from_secs(config_arc.reconnect_interval)).await;
+                error!(
+                    "Connection error: {}. Reconnecting in {}s...",
+                    e, config_arc.reconnect_interval
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    config_arc.reconnect_interval,
+                ))
+                .await;
             }
             Err(e) => return Err(e),
         }
@@ -111,21 +117,35 @@ async fn run_client_loop(config: Arc<ClientConfig>, router: Arc<Router>) -> Resu
     write_command(&mut writer, &register_cmd).await?;
     debug!("Sent registration command");
 
-    match tokio::time::timeout(tokio::time::Duration::from_secs(10), read_command(&mut reader)).await? {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        read_command(&mut reader),
+    )
+    .await?
+    {
         Ok(Command::RegisterResult { success, error }) if success => {
             info!("Successfully registered with the server.");
         }
         Ok(Command::RegisterResult { error, .. }) => {
-            return Err(anyhow!("Registration failed: {}", error.unwrap_or_default()));
+            return Err(anyhow!(
+                "Registration failed: {}",
+                error.unwrap_or_default()
+            ));
         }
         Ok(cmd) => return Err(anyhow!("Unexpected command: {:?}", cmd)),
         Err(e) => return Err(e),
     }
 
     if config.server_addr != "proxy.agentx.plus" {
-        info!("🌐 Public URL: {}:17003?token={}", config.server_addr, config.client_id);
+        info!(
+            "🌐 Public URL: {}:17003?token={}",
+            config.server_addr, config.client_id
+        );
     } else {
-        info!("🌐 Public URL: https://console.agentx.plus/?token={}", config.client_id);
+        info!(
+            "🌐 Public URL: https://console.agentx.plus/?token={}",
+            config.client_id
+        );
     }
 
     loop {

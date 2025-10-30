@@ -1,4 +1,4 @@
-use crate::agentx::{claude, codex};
+use crate::agentx::{claude, codex, gemini};
 use crate::executor::{
     build_command, parse_bool_str, ClaudeOptions, CodexOptions, ExecutorKind, ExecutorOptions,
     GeminiOptions,
@@ -319,7 +319,9 @@ async fn load_history_for_executor(executor: ExecutorKind, session_id: &str) -> 
             .await
             .ok(),
         ExecutorKind::Codex => codex::load_session_by_id(session_id.to_string()).await.ok(),
-        ExecutorKind::Gemini => None,
+        ExecutorKind::Gemini => gemini::load_session_by_id(session_id.to_string())
+            .await
+            .ok(),
     }
 }
 
@@ -331,20 +333,29 @@ async fn delete_history_for_executor(
         return delete_history_by_kind(executor, session_id).await;
     }
 
-    match delete_history_by_kind(ExecutorKind::Claude, session_id).await {
-        Ok(_) => Ok(()),
-        Err(err) if err.contains("not found") => {
-            delete_history_by_kind(ExecutorKind::Codex, session_id).await
+    for executor in [
+        ExecutorKind::Claude,
+        ExecutorKind::Codex,
+        ExecutorKind::Gemini,
+    ] {
+        match delete_history_by_kind(executor, session_id).await {
+            Ok(_) => return Ok(()),
+            Err(err) if err.contains("not found") => continue,
+            Err(err) => return Err(err),
         }
-        Err(err) => Err(err),
     }
+
+    Err(format!(
+        "Session {} not found in supported executors",
+        session_id
+    ))
 }
 
 async fn delete_history_by_kind(executor: ExecutorKind, session_id: &str) -> Result<(), String> {
     match executor {
         ExecutorKind::Claude => claude::delete_session_by_id(session_id.to_string()).await,
         ExecutorKind::Codex => codex::delete_session_by_id(session_id.to_string()).await,
-        ExecutorKind::Gemini => Err("Deleting Gemini session history is not supported".to_string()),
+        ExecutorKind::Gemini => gemini::delete_session_by_id(session_id.to_string()).await,
     }
 }
 
