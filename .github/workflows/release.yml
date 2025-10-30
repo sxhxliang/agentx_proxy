@@ -100,9 +100,9 @@ jobs:
           if [ "${{ matrix.client_only }}" = "true" ]; then
             echo "Building client only (arpc) for ${{ matrix.target }}..."
             if [ "${{ matrix.use_cross }}" = "true" ]; then
-              cross build --release --target ${{ matrix.target }} -p arp-client
+              cross build --release --target ${{ matrix.target }} -p arpc
             else
-              cargo build --release --target ${{ matrix.target }} -p arp-client
+              cargo build --release --target ${{ matrix.target }} -p arpc
             fi
           else
             echo "Building all workspace members for ${{ matrix.target }}..."
