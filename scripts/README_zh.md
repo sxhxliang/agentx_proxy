@@ -260,13 +260,34 @@ http://服务器IP:17003/?token=my-service
 - `DELETE /api/sessions/{session_id}` - 取消/删除会话
 - `POST /api/sessions/{session_id}/cancel` - 取消执行但保留历史
 
-#### Claude 集成
-- `GET /api/claude/projects` - 列出 Claude 项目
-- `GET /api/claude/projects/working-directories` - 获取工作目录
-- `GET /api/claude/projects/{project_id}/sessions` - 获取项目会话
-- `GET /api/claude/sessions` - 列出所有 Claude 会话
-- `GET /api/claude/sessions/{session_id}` - 加载会话消息
-- `DELETE /api/claude/sessions/{session_id}` - 删除会话
+#### 文件系统浏览
+- 默认关闭，启动 `arpc` 时需添加 `--enable-fs` 或在配置中开启 `enable_fs=true`
+- `GET /api/sessions/{session_id}/fs` - 查看会话项目根目录
+- `GET /api/sessions/{session_id}/fs/{path}` - 浏览会话项目子路径或读取文件
+- `GET /api/fs` - 通过 `project_path` 查询参数直接浏览任意项目根目录
+- `GET /api/fs/{path}` - 在指定 `project_path` 下查看子目录或文件
+
+#### AI 智能体集成
+
+所有智能体（Claude、Codex、Gemini）共享统一的 API 模式，只需将路径中的 `{agent}` 替换为 `claude`、`codex` 或 `gemini`：
+
+- `GET /api/{agent}/projects` - 列出项目
+- `GET /api/{agent}/projects/working-directories` - 获取工作目录摘要
+- `GET /api/{agent}/sessions` - 列出所有会话（支持 `limit`、`offset`、`projectPath` 参数）
+- `GET /api/{agent}/sessions/{session_id}` - 加载会话消息
+- `DELETE /api/{agent}/sessions/{session_id}` - 删除会话
+
+**示例：**
+```bash
+# Claude 项目
+GET /api/claude/projects?token=abc123
+
+# Codex 历史会话（过滤特定项目）
+GET /api/codex/sessions?token=abc123&projectPath=/home/user/myproject
+
+# Gemini 会话消息
+GET /api/gemini/sessions/session_123?token=abc123
+```
 
 #### 代理转发
 - `POST /proxy` - TCP 代理转发

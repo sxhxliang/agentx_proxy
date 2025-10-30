@@ -317,7 +317,7 @@ DELETE /api/sessions/{session_id}?token=<client_id>
 
 #### 文件系统浏览
 
-> ⚠️ 默认关闭：启动 `arpc` 客户端时需带上 `--enable-fs-api` 或在配置中将 `enable_fs` 设为 `true` 才会开放以下接口。
+> ⚠️ 默认关闭：启动 `arpc` 客户端时需带上 `--enable-fs` 或在配置中将代码中的`enable_fs` 设为 `true` 才会开放以下接口。
 
 ```bash
 # 浏览会话项目根目录
@@ -335,35 +335,47 @@ GET /api/fs/{path}?token=<client_id>&project_path=/abs/path/to/project
 
 > `project_path` 必须是服务器上的绝对路径，`path` 可以用 `path` 查询参数或尾部通配路径提供；响应会返回目录条目或文件内容（最大 1 MiB，超出时标记 `truncated=true`）。
 
-#### Claude 专属功能
+#### AI 智能体专属功能
+
+所有智能体（Claude、Codex、Gemini）共享统一的 API 模式，只需将路径中的 `{agent}` 替换为 `claude`、`codex` 或 `gemini`：
 
 ```bash
-# 列出本地 Claude 项目
-GET /api/claude/projects?token=<client_id>
+# 列出本地项目
+GET /api/{agent}/projects?token=<client_id>
 
-# 查询历史会话
-GET /api/claude/sessions?token=<client_id>
+# 查看最近使用的工作目录摘要
+GET /api/{agent}/projects/working-directories?token=<client_id>
+
+# 查询历史会话（支持分页和项目路径过滤）
+GET /api/{agent}/sessions?token=<client_id>&limit=50&offset=0&projectPath=/abs/path
 
 # 加载会话消息
-GET /api/claude/sessions/{session_id}?token=<client_id>
+GET /api/{agent}/sessions/{session_id}?token=<client_id>
+
+# 删除会话
+DELETE /api/{agent}/sessions/{session_id}?token=<client_id>
 ```
 
-#### Codex 专属功能
+**查询参数说明：**
+- `limit` - 返回结果数量限制（可选）
+- `offset` - 分页偏移量（可选）
+- `projectPath` - 按绝对路径过滤会话（可选）
 
+**示例：**
 ```bash
-# 列出本地 Codex 项目
-GET /api/codex/projects?token=<client_id>
+# Claude 项目
+GET /api/claude/projects?token=abc123
 
-# 查询历史会话
-GET /api/codex/sessions?token=<client_id>
+# Codex 历史会话（过滤特定项目）
+GET /api/codex/sessions?token=abc123&projectPath=/home/user/myproject
 
-# 加载会话消息
-GET /api/codex/sessions/{session_id}?token=<client_id>
+# Gemini 会话消息
+GET /api/gemini/sessions/session_123?token=abc123
 ```
 
 ### 纯转发模式
 
-也可以代理任何 TCP 服务（Web 应用、API、数据库...）：
+也可以代理任何 TCP 服务（Web 应用、API...）：
 
 ```bash
 cargo run -p arpc -- \
