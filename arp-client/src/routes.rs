@@ -59,6 +59,44 @@ fn register_session_routes(router_builder: &mut RouterBuilder, state: &HandlerSt
             async move { handlers::session::handle_cancel_session(ctx, state).await }
         }
     });
+
+    if state.config.enable_fs {
+        // GET /api/sessions/{session_id}/fs - Inspect session project root
+        router_builder.get("/api/sessions/{session_id}/fs", {
+            let state = state.clone();
+            move |ctx| {
+                let state = state.clone();
+                async move { handlers::filesystem::handle_filesystem(ctx, state).await }
+            }
+        });
+
+        // GET /api/sessions/{session_id}/fs/{*path} - Inspect directory or file under project root
+        router_builder.get("/api/sessions/{session_id}/fs/{*path}", {
+            let state = state.clone();
+            move |ctx| {
+                let state = state.clone();
+                async move { handlers::filesystem::handle_filesystem(ctx, state).await }
+            }
+        });
+
+        // GET /api/fs - Inspect project root without session
+        router_builder.get("/api/fs", {
+            let state = state.clone();
+            move |ctx| {
+                let state = state.clone();
+                async move { handlers::filesystem::handle_filesystem(ctx, state).await }
+            }
+        });
+
+        // GET /api/fs/{*path} - Inspect directory or file without session
+        router_builder.get("/api/fs/{*path}", {
+            let state = state.clone();
+            move |ctx| {
+                let state = state.clone();
+                async move { handlers::filesystem::handle_filesystem(ctx, state).await }
+            }
+        });
+    }
 }
 
 fn register_proxy_routes(router_builder: &mut RouterBuilder, state: &HandlerState) {

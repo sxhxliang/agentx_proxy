@@ -9,6 +9,7 @@ use crate::session::{CommandSession, SessionStatus};
 use anyhow::{anyhow, Result};
 use common::http::{json_error, HttpResponse};
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::oneshot;
@@ -538,6 +539,7 @@ async fn execute_command(
                         &session,
                     )
                     .await;
+                session.set_project_path(PathBuf::from(&project_path)).await;
                 session
             } else {
                 error!("First line JSON missing 'session_id' field");

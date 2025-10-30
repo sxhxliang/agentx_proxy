@@ -315,6 +315,26 @@ GET /api/sessions/{session_id}?token=<client_id>
 DELETE /api/sessions/{session_id}?token=<client_id>
 ```
 
+#### 文件系统浏览
+
+> ⚠️ 默认关闭：启动 `arpc` 客户端时需带上 `--enable-fs-api` 或在配置中将 `enable_fs` 设为 `true` 才会开放以下接口。
+
+```bash
+# 浏览会话项目根目录
+GET /api/sessions/{session_id}/fs?token=<client_id>
+
+# 浏览会话项目子路径或读取文件
+GET /api/sessions/{session_id}/fs/{path}?token=<client_id>
+
+# 直接按路径查看任何项目目录（无需 session）
+GET /api/fs?token=<client_id>&project_path=/abs/path/to/project
+
+# 查看项目内子目录或文件
+GET /api/fs/{path}?token=<client_id>&project_path=/abs/path/to/project
+```
+
+> `project_path` 必须是服务器上的绝对路径，`path` 可以用 `path` 查询参数或尾部通配路径提供；响应会返回目录条目或文件内容（最大 1 MiB，超出时标记 `truncated=true`）。
+
 #### Claude 专属功能
 
 ```bash

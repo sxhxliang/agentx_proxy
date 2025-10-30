@@ -57,6 +57,10 @@ pub struct ClientConfig {
     /// Reconnect interval in seconds
     #[arg(long, default_value_t = 5)]
     pub reconnect_interval: u64,
+
+    /// Enable filesystem browsing APIs
+    #[arg(long)]
+    pub enable_fs: bool,
 }
 
 fn default_client_id() -> String {

@@ -1,6 +1,7 @@
 use crate::executor::ExecutorKind;
 use serde_json::json;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{Duration, Instant};
@@ -37,6 +38,7 @@ pub struct CommandSession {
     pub broadcast_tx: broadcast::Sender<OutputLine>,
     /// Process handle for cancellation (only available while running)
     pub process_handle: Arc<Mutex<Option<tokio::process::Child>>>,
+    pub project_path: Arc<RwLock<Option<PathBuf>>>,
 }
 
 impl CommandSession {
@@ -54,6 +56,7 @@ impl CommandSession {
             total_lines: Arc::new(Mutex::new(0)),
             broadcast_tx: tx,
             process_handle: Arc::new(Mutex::new(None)),
+            project_path: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -175,6 +178,19 @@ impl CommandSession {
     /// Create a new receiver for broadcast updates
     pub fn subscribe(&self) -> broadcast::Receiver<OutputLine> {
         self.broadcast_tx.subscribe()
+    }
+
+    pub async fn set_project_path<P>(&self, path: P)
+    where
+        P: AsRef<Path>,
+    {
+        let mut project_path = self.project_path.write().await;
+        *project_path = Some(path.as_ref().to_path_buf());
+    }
+
+    pub async fn get_project_path(&self) -> Option<PathBuf> {
+        let project_path = self.project_path.read().await;
+        project_path.clone()
     }
 }
 

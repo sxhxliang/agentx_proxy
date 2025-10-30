@@ -375,7 +375,7 @@ async fn route_public_connection(
     }
 
     // Check if token parameter exists in HTTP request
-    let token = match http_request
+    let token_raw = match http_request
         .as_ref()
         .and_then(|req| req.query_param("token"))
     {
@@ -390,6 +390,18 @@ async fn route_public_connection(
             return Err(anyhow!("Client Token not found"));
         }
     };
+
+    let token = token_raw.split_whitespace().next().unwrap_or("");
+
+    if token.is_empty() {
+        if http_request.is_some() {
+            let _ = HttpResponse::not_found()
+                .text("Client Token not found")
+                .send(&mut user_stream)
+                .await;
+        }
+        return Err(anyhow!("Client Token not found"));
+    }
 
     // Token-based routing
 
