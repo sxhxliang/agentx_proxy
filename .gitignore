@@ -1,2 +1,6 @@
 target
 cache
+.claude
+.project
+.settings
+.DS_Store
