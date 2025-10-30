@@ -328,6 +328,19 @@ GET /api/claude/sessions?token=<client_id>
 GET /api/claude/sessions/{session_id}?token=<client_id>
 ```
 
+#### Codex 专属功能
+
+```bash
+# 列出本地 Codex 项目
+GET /api/codex/projects?token=<client_id>
+
+# 查询历史会话
+GET /api/codex/sessions?token=<client_id>
+
+# 加载会话消息
+GET /api/codex/sessions/{session_id}?token=<client_id>
+```
+
 ### 纯转发模式
 
 也可以代理任何 TCP 服务（Web 应用、API、数据库...）：

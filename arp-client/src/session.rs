@@ -27,7 +27,7 @@ pub struct OutputLine {
 /// Session data for a running command
 pub struct CommandSession {
     pub session_id: String,
-    pub claude_session_id: Arc<Mutex<Option<String>>>,
+    pub agent_session: Arc<Mutex<Option<(ExecutorKind, String)>>>,
     pub executor_kind: ExecutorKind,
     pub status: Arc<RwLock<SessionStatus>>,
     pub output_buffer: Arc<Mutex<Vec<OutputLine>>>,
@@ -46,7 +46,7 @@ impl CommandSession {
 
         CommandSession {
             session_id,
-            claude_session_id: Arc::new(Mutex::new(None)),
+            agent_session: Arc::new(Mutex::new(None)),
             executor_kind,
             status: Arc::new(RwLock::new(SessionStatus::Running)),
             output_buffer: Arc::new(Mutex::new(Vec::new())),
@@ -145,19 +145,21 @@ impl CommandSession {
     }
 
     /// Set Claude session ID
-    pub async fn set_claude_session_id(&self, claude_id: String) {
-        let mut claude_session_id = self.claude_session_id.lock().await;
-        *claude_session_id = Some(claude_id.clone());
+    pub async fn set_agent_session(&self, kind: ExecutorKind, agent_session_id: String) {
+        let mut agent_session = self.agent_session.lock().await;
+        *agent_session = Some((kind, agent_session_id.clone()));
         info!(
-            "Session {} linked to Claude session: {}",
-            self.session_id, claude_id
+            "Session {} linked to {} session: {}",
+            self.session_id,
+            kind.as_str(),
+            agent_session_id
         );
     }
 
-    /// Get Claude session ID
-    pub async fn get_claude_session_id(&self) -> Option<String> {
-        let claude_session_id = self.claude_session_id.lock().await;
-        claude_session_id.clone()
+    /// Get agent session info
+    pub async fn get_agent_session(&self) -> Option<(ExecutorKind, String)> {
+        let agent_session = self.agent_session.lock().await;
+        agent_session.clone()
     }
 
     /// Get all output lines from a specific line number
@@ -180,14 +182,14 @@ impl CommandSession {
 #[derive(Clone)]
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, Arc<CommandSession>>>>,
-    claude_session_map: Arc<Mutex<HashMap<String, String>>>, // claude_session_id -> session_id
+    agent_session_map: Arc<Mutex<HashMap<(ExecutorKind, String), String>>>,
 }
 
 impl SessionManager {
     pub fn new() -> Self {
         let manager = SessionManager {
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            claude_session_map: Arc::new(Mutex::new(HashMap::new())),
+            agent_session_map: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Start cleanup task
@@ -255,20 +257,22 @@ impl SessionManager {
         session
     }
 
-    /// Register Claude session ID mapping
-    pub async fn register_claude_session(
+    /// Register executor-specific session ID mapping
+    pub async fn register_agent_session(
         &self,
-        claude_session_id: String,
+        executor_kind: ExecutorKind,
+        agent_session_id: String,
         session: &Arc<CommandSession>,
     ) {
-        // Set the claude_session_id in the session
         session
-            .set_claude_session_id(claude_session_id.clone())
+            .set_agent_session(executor_kind, agent_session_id.clone())
             .await;
 
-        // Add mapping (overwrite if exists for 1:1 mapping)
-        let mut claude_map = self.claude_session_map.lock().await;
-        claude_map.insert(claude_session_id, session.session_id.clone());
+        let mut agent_map = self.agent_session_map.lock().await;
+        agent_map.insert(
+            (executor_kind, agent_session_id),
+            session.session_id.clone(),
+        );
     }
 
     /// Cancel a running session
@@ -287,10 +291,9 @@ impl SessionManager {
 
         // Get the session to retrieve its Claude session ID
         if let Some(session) = sessions.get(session_id) {
-            if let Some(claude_id) = session.get_claude_session_id().await {
-                // Remove from Claude session map
-                let mut claude_map = self.claude_session_map.lock().await;
-                claude_map.remove(&claude_id);
+            if let Some(agent_info) = session.get_agent_session().await {
+                let mut agent_map = self.agent_session_map.lock().await;
+                agent_map.remove(&agent_info);
             }
         }
 
@@ -307,27 +310,27 @@ impl SessionManager {
             tokio::time::sleep(cleanup_interval).await;
 
             let mut sessions = self.sessions.lock().await;
-            let mut claude_map = self.claude_session_map.lock().await;
+            let mut agent_map = self.agent_session_map.lock().await;
             let now = Instant::now();
 
             // Find expired sessions
-            let expired: Vec<(String, Option<String>)> = {
+            let expired: Vec<(String, Option<(ExecutorKind, String)>)> = {
                 let mut expired = Vec::new();
                 for (id, session) in sessions.iter() {
                     let last_accessed = session.last_accessed.lock().await;
                     if now.duration_since(*last_accessed) > session_timeout {
-                        let claude_id = session.get_claude_session_id().await;
-                        expired.push((id.clone(), claude_id));
+                        let agent_info = session.get_agent_session().await;
+                        expired.push((id.clone(), agent_info));
                     }
                 }
                 expired
             };
 
             // Remove expired sessions
-            for (id, claude_id) in expired {
+            for (id, agent_info) in expired {
                 sessions.remove(&id);
-                if let Some(claude_id) = claude_id {
-                    claude_map.remove(&claude_id);
+                if let Some(agent_info) = agent_info {
+                    agent_map.remove(&agent_info);
                 }
                 info!("Cleaned up expired session: {}", id);
             }

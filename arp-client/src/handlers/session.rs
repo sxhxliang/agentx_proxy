@@ -1,4 +1,4 @@
-use crate::agentx::claude;
+use crate::agentx::{claude, codex};
 use crate::executor::{
     build_command, parse_bool_str, ClaudeOptions, CodexOptions, ExecutorKind, ExecutorOptions,
     GeminiOptions,
@@ -172,9 +172,18 @@ async fn handle_get_session(
         .unwrap_or(0);
 
     let in_memory_session = state.session_manager.get_session(session_id).await;
-    let historical_messages = claude::load_session_by_id(session_id.to_string())
-        .await
-        .ok();
+
+    // Determine which executor to use for loading history
+    let executor_kind = if let Some(session) = &in_memory_session {
+        session.executor_kind
+    } else {
+        ctx.request
+            .query_param("executor")
+            .and_then(|value| ExecutorKind::from_str(value))
+            .unwrap_or(ExecutorKind::Claude)
+    };
+
+    let historical_messages = load_history_for_executor(executor_kind, session_id).await;
 
     if in_memory_session.is_none() && historical_messages.is_none() {
         warn!("('{}') Session not found: {}", proxy_conn_id, session_id);
@@ -281,7 +290,12 @@ async fn handle_delete_session(
             proxy_conn_id, session_id
         );
 
-        match claude::delete_session_by_id(session_id.to_string()).await {
+        let requested_executor = ctx
+            .request
+            .query_param("executor")
+            .and_then(|value| ExecutorKind::from_str(value));
+
+        match delete_history_for_executor(requested_executor, session_id).await {
             Ok(_) => {
                 let body = json!({
                     "type": "session_deleted",
@@ -296,6 +310,41 @@ async fn handle_delete_session(
                 Ok(HttpResponse::ok())
             }
         }
+    }
+}
+
+async fn load_history_for_executor(executor: ExecutorKind, session_id: &str) -> Option<Vec<Value>> {
+    match executor {
+        ExecutorKind::Claude => claude::load_session_by_id(session_id.to_string())
+            .await
+            .ok(),
+        ExecutorKind::Codex => codex::load_session_by_id(session_id.to_string()).await.ok(),
+        ExecutorKind::Gemini => None,
+    }
+}
+
+async fn delete_history_for_executor(
+    executor_override: Option<ExecutorKind>,
+    session_id: &str,
+) -> Result<(), String> {
+    if let Some(executor) = executor_override {
+        return delete_history_by_kind(executor, session_id).await;
+    }
+
+    match delete_history_by_kind(ExecutorKind::Claude, session_id).await {
+        Ok(_) => Ok(()),
+        Err(err) if err.contains("not found") => {
+            delete_history_by_kind(ExecutorKind::Codex, session_id).await
+        }
+        Err(err) => Err(err),
+    }
+}
+
+async fn delete_history_by_kind(executor: ExecutorKind, session_id: &str) -> Result<(), String> {
+    match executor {
+        ExecutorKind::Claude => claude::delete_session_by_id(session_id.to_string()).await,
+        ExecutorKind::Codex => codex::delete_session_by_id(session_id.to_string()).await,
+        ExecutorKind::Gemini => Err("Deleting Gemini session history is not supported".to_string()),
     }
 }
 
@@ -472,7 +521,11 @@ async fn execute_command(
                     )
                     .await;
                 session_manager
-                    .register_claude_session(session_id.to_string(), &session)
+                    .register_agent_session(
+                        executor_options.kind(),
+                        session_id.to_string(),
+                        &session,
+                    )
                     .await;
                 session
             } else {
