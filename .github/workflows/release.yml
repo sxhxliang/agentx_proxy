@@ -1,0 +1,286 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to build (e.g. v1.2.3)"
+        required: true
+
+permissions:
+  contents: write  # Required for creating releases and uploading assets
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # First job: Build binaries for all platforms
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use_cross: false
+            archive_ext: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            use_cross: true
+            archive_ext: tar.gz
+
+          # macOS builds
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use_cross: false
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use_cross: false
+            archive_ext: tar.gz
+
+          # Windows builds (client only)
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use_cross: false
+            client_only: true
+            archive_ext: zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use_cross: false
+            client_only: true
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${INPUT_VERSION}" ]; then
+            echo "value=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build for ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.client_only }}" = "true" ]; then
+            echo "Building client only (arpc) for ${{ matrix.target }}..."
+            if [ "${{ matrix.use_cross }}" = "true" ]; then
+              cross build --release --target ${{ matrix.target }} -p arpc
+            else
+              cargo build --release --target ${{ matrix.target }} -p arpc
+            fi
+          else
+            echo "Building all workspace members for ${{ matrix.target }}..."
+            if [ "${{ matrix.use_cross }}" = "true" ]; then
+              cross build --release --target ${{ matrix.target }}
+            else
+              cargo build --release --target ${{ matrix.target }}
+            fi
+          fi
+
+          echo "Build completed. Checking output files..."
+          ls -lh target/${{ matrix.target }}/release/ | grep -E "(arps|arpc)" || true
+        shell: bash
+
+      - name: Package binaries (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          TARGET="${{ matrix.target }}"
+
+          mkdir -p release-package
+          cd release-package
+
+          # Copy binaries
+          if [ -f ../target/${TARGET}/release/arps ]; then
+            cp ../target/${TARGET}/release/arps .
+          fi
+          if [ -f ../target/${TARGET}/release/arpc ]; then
+            cp ../target/${TARGET}/release/arpc .
+          fi
+
+          # Copy README if exists
+          if [ -f ../README.md ]; then
+            cp ../README.md .
+          fi
+
+          # Make binaries executable
+          chmod +x arps arpc 2>/dev/null || true
+
+          # Create archive
+          cd ..
+          ARCHIVE_NAME="arp-${VERSION}-${TARGET}.tar.gz"
+          tar czf "${ARCHIVE_NAME}" -C release-package .
+
+          # Generate checksum
+          sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+
+          echo "Created archive: ${ARCHIVE_NAME}"
+          ls -lh "${ARCHIVE_NAME}"*
+        shell: bash
+
+      - name: Package binaries (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $VERSION = "${{ steps.version.outputs.value }}"
+          $TARGET = "${{ matrix.target }}"
+
+          New-Item -ItemType Directory -Force -Path release-package
+
+          if (Test-Path "target\${TARGET}\release\arpc.exe") {
+            Copy-Item "target\${TARGET}\release\arpc.exe" release-package\
+          }
+
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" release-package\
+          }
+
+          # Create zip archive
+          $ARCHIVE_NAME = "arp-${VERSION}-${TARGET}.zip"
+          Compress-Archive -Path release-package\* -DestinationPath $ARCHIVE_NAME
+
+          # Generate checksum
+          $hash = (Get-FileHash -Path $ARCHIVE_NAME -Algorithm SHA256).Hash
+          "${hash}  ${ARCHIVE_NAME}" | Out-File -FilePath "${ARCHIVE_NAME}.sha256" -Encoding ASCII
+
+          Write-Host "Created archive: ${ARCHIVE_NAME}"
+          Get-Item $ARCHIVE_NAME*
+        shell: powershell
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arp-${{ matrix.target }}
+          path: |
+            arp-*.tar.gz
+            arp-*.tar.gz.sha256
+            arp-*.zip
+            arp-*.zip.sha256
+          if-no-files-found: error
+
+  # Second job: Create GitHub release and upload all assets
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          ls -lh artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Upload to R2 storage
+  upload-to-r2:
+    name: Upload to Cloudflare R2
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run if pushing tags (secrets checked in step)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Check R2 configuration
+        id: check-r2
+        run: |
+          if [ -n "${{ secrets.R2_BUCKET }}" ] && [ -n "${{ secrets.R2_ACCESS_KEY_ID }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ R2 secrets not configured, skipping R2 upload"
+          fi
+
+      - name: Download all artifacts
+        if: steps.check-r2.outputs.configured == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Configure AWS CLI for R2
+        if: steps.check-r2.outputs.configured == 'true'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id $R2_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $R2_SECRET_ACCESS_KEY
+          aws configure set region auto
+
+      - name: Upload to R2
+        if: steps.check-r2.outputs.configured == 'true'
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cd artifacts
+          for file in arp-*; do
+            echo "Uploading ${file} to R2..."
+            aws s3 cp "${file}" \
+              "s3://${R2_BUCKET}/releases/${VERSION}/${file}" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          done
+          echo "✅ All artifacts uploaded to R2 successfully!"
